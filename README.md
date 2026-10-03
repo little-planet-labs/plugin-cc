@@ -67,6 +67,16 @@ The overseer replaces the default Claude Code system prompt for that session. To
 
 The overseer keeps a small ledger of its working state in the session scratchpad: the agents it has running, review rounds, and Linear state. The plugin's SessionStart hook tells the overseer where the ledger is and puts it back into context after compaction or when you resume a session, so auto-compaction doesn't make it lose track of that work. Turn on auto-compact in `/config` for long runs, such as working through a Linear board overnight. The hook needs Node.js, and does nothing if `node` isn't on your PATH.
 
+### Status mod
+
+In an overseer session the plugin also loads a mod that shows the factory's state inside Claude Code. The mod needs Claude Code 2.1.287 or later, where mods are on by default. Versions without mod support ignore it, and the rest of the plugin keeps working.
+
+- **Status line.** Under the prompt: how many agents are running, done, and failed, context use, the 5-hour rate limit, and the ledger's next step.
+- **`/factory`.** Opens a pane with usage (context, tokens left before auto-compaction, the 5-hour and 7-day rate limits, and session cost), the agent tree from the overseer down through managers to workers (each with its status, model, elapsed time, and tokens), and a summary of the ledger: its status, next step, open questions, units by state, background work, and each manager ledger's next step.
+- **Compaction reminder.** When context reaches 90% of the auto-compaction threshold, or 75% of the window when the threshold isn't known, it tells the overseer once to bring its ledger up to date. It reminds it again after the next compaction.
+
+The mod only reads the ledgers in the session scratchpad and never writes a file. In any other session it shows nothing and adds nothing to the model's context.
+
 ### The agents
 
 **Overseer** (`little-planet-factory:overseer`) is the controller. It scopes the work, breaks it into units that don't touch the same files, and hands them to workers and managers, in parallel only when they don't build together: units where either's build compiles the other's files in one working tree run one after another, and one that stops unfinished holds the rest up until it's done or you decide. It doesn't write code unless you tell it to. It launches agents in the background so you can keep talking to it while they run: ask questions, add work, or redirect an agent mid-task. It owns final quality. Work isn't done until every unit has reported back, it has read every diff, verification passes, every required inspection has come back clean, and it has cleaned up the build output agents reported.
@@ -201,7 +211,10 @@ plugins/little-planet-factory/
   skills/linear/                           Linear project workflows, loaded on demand
   skills/codex-review/                     optional Codex second review, preloaded into the inspector
   hooks/                                   SessionStart hook that points the overseer to its ledger and re-injects it (factory-ledger),
-                                           and PreToolUse hook that keeps lite-tier spawns on sonnet (lite-tier.mjs, lite-tier.sh)
+                                           PreToolUse hook that keeps lite-tier spawns on sonnet (lite-tier.mjs, lite-tier.sh),
+                                           and the status mod (register.ts, with its code in mod/)
+  types/index.d.ts                         the status mod's session state types
+  tests/                                   status mod tests, run with claude plugin test
 tests/                                     tests for the ledger and lite-tier hooks, not shipped with the plugin
 ```
 
@@ -219,6 +232,12 @@ Run the hook tests (needs Node.js):
 ```
 sh tests/factory-ledger-hook.test.sh
 sh tests/lite-tier-hook.test.sh
+```
+
+Run the status mod tests (needs Claude Code 2.1.287 or later, the first version with mods on by default). They live in `plugins/little-planet-factory/tests/`, because `claude plugin test` only runs tests inside the plugin folder, so they ship with the plugin:
+
+```
+claude plugin test plugins/little-planet-factory
 ```
 
 Test locally from a clone:
