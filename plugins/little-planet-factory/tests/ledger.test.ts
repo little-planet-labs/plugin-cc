@@ -3,7 +3,8 @@ import { describe, expect, test } from 'claude-code/testing'
 import { parseLedger, unitState } from '../hooks/mod/ledger'
 import { contextLevel, nextNudge } from '../hooks/mod/nudge'
 import { mergeRoster, rosterTree } from '../hooks/mod/roster'
-import { duration, paneLines, statusLine, tokens, truncate } from '../hooks/mod/view'
+import { rowText, truncate } from '../hooks/mod/style'
+import { bandLayout, duration, paneRows, tokens } from '../hooks/mod/view'
 
 const LEDGER = `# Factory ledger
 Status: active
@@ -94,8 +95,8 @@ describe('I5 ledger_parser_tolerant', () => {
     const long = 'x'.repeat(12_000)
     const ledger = parseLedger(`## Next step\n${long}\n## Open questions for the user\n${long}\n`)
     const view = { roster: [], usage: { rateLimits: [] }, ledgers: { main: ledger, managers: [] }, now: 0 }
-    for (const line of paneLines(view, 80)) expect([...line.text].length).toBeLessThanOrEqual(80)
-    expect(statusLine(view)!.length).toBeLessThan(80)
+    for (const row of paneRows(view, 80)) expect([...rowText(row)].length).toBeLessThanOrEqual(80)
+    for (const row of bandLayout(view, 80, 10).rows) expect([...rowText(row)].length).toBeLessThanOrEqual(75)
   })
 })
 

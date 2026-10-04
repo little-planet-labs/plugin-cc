@@ -15,6 +15,8 @@ export type FactoryAgentDetail = {
   endedAt?: number
   tokens?: number
   status?: 'running' | 'done' | 'failed'
+  // The Agent tool call that spawned it, for its transcript row.
+  toolUseId?: string
 }
 
 export type FactoryUsage = {
@@ -37,6 +39,10 @@ export type FactoryLedgers = {
   managers: { slug: string; next?: string }[]
 }
 
+// One rate-limit window's toast: armed until it fires at 80%; re-armed below
+// 70% or when the window resets.
+export type FactoryLimit = { isArmed: boolean; resetsAt?: string }
+
 // armed: waiting for the threshold; pending: crossed, not yet delivered; fired: delivered.
 export type FactoryNudge = { phase: 'armed' | 'pending' | 'fired'; percent: number }
 
@@ -49,6 +55,9 @@ declare module 'claude-code' {
       usage: FactoryUsage
       ledgers: FactoryLedgers
       nudge: FactoryNudge
+      limits: Record<string, FactoryLimit>
+      // Each subagent's last request's tokens, until folded into details.
+      stepTokens: Record<string, number>
     }
   }
 }

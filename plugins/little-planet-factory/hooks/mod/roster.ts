@@ -55,3 +55,14 @@ export function rosterTree(entries: readonly RosterEntry[]): { entry: RosterEntr
   walk(undefined, 1)
   return out
 }
+
+// Claude Code's own figure for an agent's tokens (the Agent result's
+// `totalTokens`): one request's input, cache writes, cache reads and output,
+// taken from the agent's last request. Summing these over every request would
+// count the cached context again on each one.
+export const requestTokens = (usage: {
+  input_tokens: number
+  output_tokens: number
+  cache_read_input_tokens: number | null
+  cache_creation_input_tokens: number | null
+}): number => usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.output_tokens

@@ -1,162 +1,27 @@
 // The mod driven through the engine: the test's hooks stand for the engine
 // beneath the plugin (tool results, agent list, files, usage).
 
-import type { On } from 'claude-code'
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-const PLUGIN = 'little-planet-factory'
-const OVERSEER = 'little-planet-factory:overseer'
-const DIR = '/scratch/s1'
-const LEDGER = `# Factory ledger
-Status: active
-## Units
-- core; worker; state: mid-edit
-- readme; worker; state: done
-## Background work
-- PR watch task bg7
-## Open questions for the user
-- Which base branch?
-## Next step
-Inspect core once it reports.
-`
-const NUDGE = /^Factory mod: context is at \d+% and auto-compaction is near\./
-const OPUS = { model: 'claude-opus-4-5', input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 8000, cache_creation_input_tokens: 500 }
-
-type Agent = { id: string; description: string; type: string; status: string; parentId?: string }
-
-// The world beneath the plugin, editable by each test. `links` maps a
-// symlink's path to its target, a file or a directory.
-function world(on: On) {
-  const w = {
-    clock: mock.clock(on, { now: 1_000_000 }),
-    statuses: [] as (string | undefined)[],
-    files: { [`${DIR}/factory-ledger.md`]: LEDGER } as Record<string, string>,
-    links: {} as Record<string, string>,
-    // What fs.stat reports as realPath for a path, verbatim (native Windows spellings).
-    realPaths: {} as Record<string, string>,
-    reads: [] as string[],
-    stats: [] as string[],
-    lists: [] as string[],
-    writes: [] as string[],
-    commands: [] as string[],
-    agents: [] as Agent[] | null,
-    usageCalls: 0,
-    threshold: undefined as number | undefined,
-    toolResult: { result: 'ok', text: 'ok' } as object,
-    toolThrows: false,
-    listFails: false,
-    promptAnswer: 'enter' as 'enter' | 'drop' | 'throw',
-    prompts: [] as (readonly string[] | undefined)[],
-    status: () => w.statuses[w.statuses.length - 1],
-  }
-  const resolve = (path: string): string => {
-    const link = w.links[path]
-    if (link !== undefined) return resolve(link)
-    const dir = Object.keys(w.links).find(key => path.startsWith(`${key}/`))
-    return dir === undefined ? path : resolve(`${w.links[dir]}${path.slice(dir.length)}`)
-  }
-  // This host (POSIX) makes a Windows spelling relative to the cwd before a
-  // hook sees it; strip that back to what a Windows host would pass.
-  const native = (path: string): string => path.slice(Math.max(0, path.indexOf('C:\\')))
-  const children = (dir: string) =>
-    Object.keys(w.files)
-      .filter(path => path.startsWith(`${dir}/`) && !path.slice(dir.length + 1).includes('/'))
-      .map(path => path.slice(dir.length + 1))
-  on('ui.status', ($, e) => (w.statuses.push(e.text), { value: undefined }))
-  on('command.register', ($, e) => (w.commands.push(e.name), { value: { command: e.name } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('fs.read', ($, e) => {
-    const path = native(e.path)
-    w.reads.push(path)
-    const text = w.files[resolve(path)]
-    if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
-    return { value: text }
-  })
-  on('fs.stat', ($, e) => {
-    const path = native(e.path)
-    w.stats.push(path)
-    const reported = w.realPaths[path]
-    const realPath = reported ?? resolve(path)
-    const kind =
-      w.files[realPath] !== undefined ? 'file' : reported !== undefined || children(realPath).length > 0 ? 'dir' : undefined
-    if (kind === undefined) throw new Error(`ENOENT: ${path}`)
-    const isLink = w.links[path] !== undefined
-    return { value: { kind, size: 1, mtimeMs: 0, isLink, ...(e.resolve ? { realPath } : {}) } }
-  })
-  on('fs.list', ($, e) => {
-    w.lists.push(e.path)
-    if (w.listFails) throw new Error('EACCES')
-    const files = children(resolve(e.path)).map(name => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false }))
-    const links = Object.keys(w.links)
-      .filter(path => path.startsWith(`${e.path}/`) && !path.slice(e.path.length + 1).includes('/'))
-      .map(path => ({ name: path.slice(e.path.length + 1), kind: 'other' as const, size: 0, mtimeMs: 0, isLink: true }))
-    return { value: [...files, ...links] }
-  })
-  on('fs.write', ($, e) => (w.writes.push(e.path), { value: undefined }))
-  on('agent.list', () => {
-    if (w.agents === null) throw new Error('no agent list')
-    return { value: w.agents }
-  })
-  on('session.usage', () => {
-    w.usageCalls += 1
-    return {
-      value: {
-        startedAt: 0,
-        context: { window: 200_000, breakdown: { autoCompactThreshold: w.threshold, isAutoCompactEnabled: true } },
-        rateLimits: [],
-      } as never,
-    }
-  })
-  on('classic.SessionStart', () => ({}))
-  on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('session.measure', ($, e) => ({ changed: e.changed }))
-  on('tool.call', () => {
-    if (w.toolThrows) throw new Error('tool crashed')
-    return w.toolResult as never
-  })
-  on('agent.spawn', ($, e) => ({ model: 'claude-opus-4-5', agentId: e.description }))
-  on('turn.complete', () => ({ text: '' }))
-  on('prompt.submit', ($, e) => {
-    w.prompts.push(e.context)
-    if (w.promptAnswer === 'throw') throw new Error('prompt crashed')
-    return w.promptAnswer === 'drop' ? { drop: 'blocked by a settings hook' } : { text: e.text, context: e.context }
-  })
-  return w
-}
-
-const start = ($: Engine, source: 'startup' | 'resume' | 'clear' | 'compact' | 'fork', agentType?: string, dir = DIR) =>
-  $.classic.SessionStart({ source, agent_type: agentType, scratchpad_dir: dir } as never)
-
-const measure = ($: Engine, context: { tokens?: number; window: number; percent?: number }, rest: object = {}) =>
-  $.session.measure({ context, rateLimits: [], changed: ['context'], ...rest } as never)
-
-const mainTool = ($: Engine) => $.tool.call({ tool: 'Bash', command: 'ls' } as never)
-const agentTool = ($: Engine, agentId: string) => $.tool.call({ tool: 'Bash', command: 'ls', agentId } as never)
-
-const nudges = (result: unknown) => ((result as { context?: string[] }).context ?? []).filter(text => NUDGE.test(text))
-
-const finish = ($: Engine, agentId: string | undefined, reason: 'answer' | 'error' | 'aborted', usage?: typeof OPUS) =>
-  $.turn.complete({ answer: '', durationMs: 1, isAborted: reason === 'aborted', turnId: 't', agentId, reason, usage } as never)
-
-const spawn = ($: Engine, description: string) =>
-  $.agent.spawn({ prompt: 'p', description, subagentType: 'little-planet-factory:worker' } as never)
-
-const PANE_PROPS = (bodyColumns: number) => ({
-  title: 'Factory',
-  isFocused: false,
-  bodyColumns,
-  placement: 'dock' as const,
-  scroll: { offset: 0, bodyRows: 40 },
-  view: {},
-})
-
-async function paneTexts($: Engine, bodyColumns = 60, surface: 'terminal' | 'desktop' = 'terminal'): Promise<string[]> {
-  const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'factory', props: PANE_PROPS(bodyColumns) })
-  const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
-  await ui.unmount()
-  return texts
-}
+import {
+  agentTool,
+  DIR,
+  finish,
+  LEDGER,
+  mainTool,
+  measure,
+  NUDGE,
+  nudges,
+  OPUS,
+  OVERSEER,
+  paneTexts,
+  PLUGIN,
+  spawn,
+  start,
+  summary,
+  world,
+} from './world'
 
 describe('I1 inert_outside_overseer', () => {
   for (const agentType of ['general-purpose', undefined]) {
@@ -207,7 +72,7 @@ describe('I2 hooks_never_throw_and_pass_through', () => {
     w.agents = [{ id: 'a1', description: 'Build', type: 'little-planet-factory:worker', status: 'running' }]
     await start($, 'startup', OVERSEER)
     await measure($, { tokens: 100_000, window: 200_000, percent: 50 })
-    expect(w.status()).toBe('1 running · ctx 50%')
+    expect(await summary($)).toMatchObject({ running: 1, ctx: '50%' })
     expect(await paneTexts($)).toContain('  No factory ledger yet.')
   })
 })
@@ -219,7 +84,7 @@ describe('I2 hooks_never_throw_and_pass_through (listing)', () => {
     w.files[`${DIR}/factory-ledger-api.md`] = '## Next step\nWire the API\n'
     await start($, 'startup', OVERSEER)
     expect(w.lists).toEqual([DIR])
-    expect(w.status()).toBe('next: Inspect core once it reports.')
+    expect((await summary($)).next).toBe('Inspect core once it reports.')
     expect((await paneTexts($)).some(text => text.includes('manager'))).toBe(false)
   })
 })
@@ -355,15 +220,15 @@ describe('I6 roster_lifecycle', () => {
     await spawn($, 'a1')
     await spawn($, 'a2')
     await spawn($, 'a3')
-    expect(w.status()).toMatch(/^3 running/)
+    expect(await summary($)).toMatchObject({ running: 3 })
     await w.clock.advance(5_000)
     await finish($, 'a1', 'answer', OPUS)
     await finish($, 'a2', 'error')
     await finish($, 'a3', 'aborted')
-    expect(w.status()).toMatch(/^1 done · 2 failed/)
-    expect(await paneTexts($, 80)).toContain('    ✓ worker · a1 · opus-4-5 · 5s · 10.0k tok')
+    expect(await summary($)).toMatchObject({ running: 0, done: 1, failed: 2 })
+    expect(await paneTexts($, 80)).toContain('    ✓ worker · a1 · opus-4-5 · 5s')
     await agentTool($, 'a1')
-    expect(w.status()).toMatch(/^1 running · 2 failed/)
+    expect(await summary($)).toMatchObject({ running: 1, done: 0, failed: 2 })
   })
 
   test('the agent list wins for status, and lists agents spawned before load', async ($, on) => {
@@ -373,7 +238,7 @@ describe('I6 roster_lifecycle', () => {
     expect(await paneTexts($)).toContain('    ● researcher · Earlier')
     w.agents = [...w.agents, { id: 'a1', description: 'a1', type: 'little-planet-factory:worker', status: 'completed' }]
     await spawn($, 'a1')
-    expect(w.status()).toMatch(/^1 running · 1 done/)
+    expect(await summary($)).toMatchObject({ running: 1, done: 1 })
   })
 
   test('an agent the list prunes keeps its own status, and unknown ids never appear', async ($, on) => {
@@ -388,9 +253,9 @@ describe('I6 roster_lifecycle', () => {
     w.agents = [w.agents[1]!]
     await finish($, 'a1', 'answer', OPUS)
     await finish($, 'compaction-fork', 'answer', OPUS)
-    expect(w.status()).toMatch(/^1 running · 1 done ·/)
+    expect(await summary($)).toMatchObject({ running: 1, done: 1 })
     const texts = await paneTexts($, 80)
-    expect(texts).toContain('    ✓ worker · a1 · opus-4-5 · 0s · 10.0k tok')
+    expect(texts).toContain('    ✓ worker · a1 · opus-4-5 · 0s')
     expect(texts.some(text => text.includes('compaction-fork'))).toBe(false)
   })
 
@@ -400,7 +265,7 @@ describe('I6 roster_lifecycle', () => {
     await start($, 'startup', OVERSEER)
     w.agents = [{ ...w.agents[0]!, status: 'completed' }]
     await finish($, 'old', 'answer', OPUS)
-    expect(await paneTexts($, 80)).toContain('    ✓ researcher · Earlier · opus-4-5 · 10.0k tok')
+    expect(await paneTexts($, 80)).toContain('    ✓ researcher · Earlier · opus-4-5')
   })
 
   test('nested managers form a tree and an unknown parent sits at the top', async ($, on) => {
@@ -412,8 +277,8 @@ describe('I6 roster_lifecycle', () => {
     ]
     await start($, 'startup', OVERSEER)
     const texts = await paneTexts($)
-    const agents = texts.slice(texts.indexOf('  overseer'), texts.indexOf('Ledger'))
-    expect(agents).toEqual(['  overseer', '    ● manager · Sub-task', '      ● worker · Unit', '    ● worker · Orphan'])
+    const agents = texts.slice(texts.indexOf('  ◉ overseer'), texts.indexOf('Ledger'))
+    expect(agents).toEqual(['  ◉ overseer', '    ● manager · Sub-task', '      ● worker · Unit', '    ● worker · Orphan'])
   })
 })
 
@@ -426,7 +291,7 @@ describe('I7 survives_reload', () => {
     // A reload runs session.start again; the module's poll guard keeps one timer.
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    expect(w.status()).toMatch(/^1 running/)
+    expect(await summary($)).toMatchObject({ running: 1 })
     const ledgerReads = () => w.reads.filter(path => path === `${DIR}/factory-ledger.md`).length
     const before = ledgerReads()
     await w.clock.advance(15_000)
@@ -449,11 +314,75 @@ describe('I7 survives_reload (fresh module)', () => {
     on('state.get', ($, e, next) => (e.key in kept ? { value: { value: kept[e.key], version: 1 } } : next(e)) as never)
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     expect(w.commands).toEqual(['factory'])
-    expect(w.status()).toBe('1 running · next: Inspect core once it reports.')
+    expect(await summary($)).toMatchObject({ running: 1, next: 'Inspect core once it reports.' })
     const before = w.reads.length
     await w.clock.advance(15_000)
     expect(w.reads.length).toBe(before + 1)
   })
+})
+
+describe('no status line', () => {
+  test('an active session clears the status line on activation and never sets one', async ($, on) => {
+    const w = world(on)
+    w.agents = [{ id: 'a', description: 'auth', type: 'little-planet-factory:worker', status: 'running' }]
+    await start($, 'startup', OVERSEER)
+    await measure($, { tokens: 100_000, window: 200_000, percent: 50 }, { rateLimits: [{ kind: 'five_hour', percentUsed: 41 }] })
+    await w.clock.advance(15_000)
+    expect(w.statuses.length).toBeGreaterThan(0)
+    expect(w.statuses.every(text => text === undefined)).toBe(true)
+  })
+})
+
+describe('refresh writes only what changed', () => {
+  test('an unchanged poll writes neither the agent list nor the ledgers', async ($, on) => {
+    const w = world(on)
+    const writes: string[] = []
+    on('state.set', ($, e, next) => (writes.push(e.key), next(e)))
+    await start($, 'startup', OVERSEER)
+    writes.length = 0
+    await w.clock.advance(15_000)
+    expect(writes.filter(key => key === 'agents' || key === 'ledgers')).toEqual([])
+    w.files[`${DIR}/factory-ledger.md`] = '## Next step\nSomething new\n'
+    await w.clock.advance(15_000)
+    expect(writes).toContain('ledgers')
+    expect((await summary($)).next).toBe('Something new')
+  })
+})
+
+describe('the poll redraws while agents run', () => {
+  for (const [label, status, redraws] of [
+    ['a running agent', 'running', 1],
+    ['no running agent', 'completed', 0],
+  ] as const) {
+    test(`${label}: ${redraws} redraw per poll`, async ($, on) => {
+      const w = world(on)
+      const invalidated: string[] = []
+      on('ui.invalidate', ($, e) => (invalidated.push(e.event), { value: undefined }))
+      w.agents = [{ id: 'a', description: 'auth', type: 'little-planet-factory:worker', status }]
+      await start($, 'startup', OVERSEER)
+      await w.clock.advance(15_000)
+      expect(invalidated.filter(event => event === 'ui.render')).toHaveLength(redraws)
+    })
+  }
+})
+
+describe('the poll redraws while a reset countdown shows', () => {
+  for (const [label, resetsAt, redraws] of [
+    ['a 5h limit with a reset time', '2026-10-04T18:00:00.000Z', 1],
+    ['a 5h limit with no reset time', undefined, 0],
+  ] as const) {
+    test(`no running agents and ${label}: ${redraws} redraw per poll`, async ($, on) => {
+      const w = world(on)
+      const invalidated: string[] = []
+      on('ui.invalidate', ($, e) => (invalidated.push(e.event), { value: undefined }))
+      w.agents = []
+      await start($, 'startup', OVERSEER)
+      const limit = { kind: 'five_hour', percentUsed: 41, ...(resetsAt === undefined ? {} : { resetsAt }) }
+      await measure($, { window: 200_000, percent: 10 }, { rateLimits: [limit] })
+      await w.clock.advance(15_000)
+      expect(invalidated.filter(event => event === 'ui.render')).toHaveLength(redraws)
+    })
+  }
 })
 
 describe('I8 session_sources_reseed', () => {
@@ -464,7 +393,7 @@ describe('I8 session_sources_reseed', () => {
     await spawn($, 'a1')
     w.files['/scratch/s2/factory-ledger.md'] = '## Next step\nFresh start\n'
     await start($, 'clear', OVERSEER, '/scratch/s2')
-    expect(w.status()).toBe('next: Fresh start')
+    expect(await summary($)).toMatchObject({ running: 0, next: 'Fresh start' })
     expect(w.reads).toContain('/scratch/s2/factory-ledger.md')
   })
 
@@ -476,7 +405,7 @@ describe('I8 session_sources_reseed', () => {
       await spawn($, 'a1')
       w.files['/scratch/s3/factory-ledger.md'] = '## Next step\nCarry on\n'
       await start($, source, OVERSEER, '/scratch/s3')
-      expect(w.status()).toBe('1 running · next: Carry on')
+      expect(await summary($)).toMatchObject({ running: 1, next: 'Carry on' })
     })
   }
 })
@@ -507,7 +436,7 @@ describe('I9 reads_only_inside_scratchpad (symlinks)', () => {
     w.links = { [`${DIR}/factory-ledger.md`]: '/elsewhere/secret.md', [`${DIR}/factory-ledger-evil.md`]: '/elsewhere/secret.md' }
     await start($, 'startup', OVERSEER)
     expect(w.reads).toEqual([])
-    expect(w.status()).toBeUndefined()
+    expect((await summary($)).next).toBeUndefined()
     const texts = await paneTexts($)
     expect(texts).toContain('  No factory ledger yet.')
     expect(texts.join('\n')).not.toMatch(/Leaked|evil/)
@@ -519,7 +448,7 @@ describe('I9 reads_only_inside_scratchpad (symlinks)', () => {
     w.links = { [`${DIR}/factory-ledger.md`]: `${DIR}/ledger-v2.md`, [`${DIR}/factory-ledger-api.md`]: `${DIR}/api-ledger.md` }
     await start($, 'startup', OVERSEER)
     expect([...new Set(w.reads)].sort()).toEqual([`${DIR}/api-ledger.md`, `${DIR}/ledger-v2.md`])
-    expect(w.status()).toBe('next: From the link')
+    expect((await summary($)).next).toBe('From the link')
     expect(await paneTexts($)).toContain('  manager api: Wire the API')
   })
 
@@ -529,7 +458,7 @@ describe('I9 reads_only_inside_scratchpad (symlinks)', () => {
     w.links = { '/scratch': '/private/scratch' }
     await start($, 'startup', OVERSEER)
     expect(w.reads).toEqual([`/private${DIR}/factory-ledger.md`])
-    expect(w.status()).toBe('next: Through /private')
+    expect((await summary($)).next).toBe('Through /private')
   })
 })
 
@@ -542,7 +471,7 @@ describe('I9 reads_only_inside_scratchpad (Windows paths)', () => {
     w.realPaths = { [WIN]: `${WIN}\\`, [`${WIN}/factory-ledger.md`]: `${WIN}\\factory-ledger.md` }
     await start($, 'startup', OVERSEER, WIN)
     expect(w.reads).toEqual([`${WIN}\\factory-ledger.md`])
-    expect(w.status()).toBe('next: On Windows')
+    expect((await summary($)).next).toBe('On Windows')
   })
 
   test('a backslash realPath outside the scratchpad is not read', async ($, on) => {
@@ -552,7 +481,7 @@ describe('I9 reads_only_inside_scratchpad (Windows paths)', () => {
     await start($, 'startup', OVERSEER, WIN)
     expect(w.stats).toContain(`${WIN}/factory-ledger.md`)
     expect(w.reads).toEqual([])
-    expect(w.status()).toBeUndefined()
+    expect(await paneTexts($)).toContain('  No factory ledger yet.')
   })
 })
 
@@ -562,7 +491,7 @@ describe('I10 missing_usage_fields', () => {
     w.files = {}
     await start($, 'startup', OVERSEER)
     await measure($, { window: 200_000 })
-    expect(w.status()).toBeUndefined()
+    expect(await summary($)).toMatchObject({ ctx: undefined, fiveHour: undefined })
     const texts = await paneTexts($)
     expect(texts).toContain('  no usage reported yet')
     expect(texts.join('\n')).not.toMatch(/NaN|undefined/)
@@ -573,10 +502,10 @@ describe('I10 missing_usage_fields', () => {
     w.files = {}
     await start($, 'startup', OVERSEER)
     await measure($, { tokens: 50_000, window: 200_000 }, { rateLimits: [{ kind: 'five_hour', percentUsed: 41 }] })
-    expect(w.status()).toBe('ctx 25% · 5h 41%')
+    expect(await summary($)).toMatchObject({ ctx: '25%', fiveHour: '41%', next: undefined })
     const texts = await paneTexts($)
-    expect(texts).toContain('  context 25% · 50.0k / 200.0k tokens')
-    expect(texts).toContain('  5h 41%')
+    expect(texts).toContain('  context ███░░░░░░░ 25% · 50.0k / 200.0k tokens')
+    expect(texts).toContain('  5h ████░░░░░░ 41%')
     expect(texts.join('\n')).not.toMatch(/NaN|undefined|cost/)
   })
 
@@ -595,13 +524,13 @@ describe('I10 missing_usage_fields', () => {
         cost: { usd: 3.2 },
       },
     )
-    expect(w.status()).toBe('ctx 62% · 5h 41% · next: Inspect core once it reports.')
+    expect(await summary($)).toMatchObject({ ctx: '62%', fiveHour: '41%', next: 'Inspect core once it reports.' })
     const texts = await paneTexts($, 100)
     expect(texts.slice(0, 5)).toEqual([
       'Usage',
-      '  context 62% · 124.0k / 200.0k tokens · 56.0k left before auto-compaction',
-      '  5h 41% · resets in 2h10m',
-      '  7d 13%',
+      '  context ██████░░░░ 62% · 124.0k / 200.0k tokens · 56.0k left before auto-compaction',
+      '  5h ████░░░░░░ 41% · resets in 2h10m',
+      '  7d █░░░░░░░░░ 13%',
       '  cost $3.20',
     ])
     expect(texts.slice(texts.indexOf('Ledger'))).toEqual([
