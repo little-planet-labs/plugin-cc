@@ -1,12 +1,12 @@
 ---
 name: suno-songwriting
-description: How the music-video lyricist writes a company song for Suno. Covers what Suno actually takes (a lyrics box and a style description, nothing else confirmed), the topic menu that comes before any lyrics, bracketed section and delivery tags, the screen and sung lyric files and phonetic respelling of names, syllable budgeting per bar at a given BPM with rhymes on strong beats, lyric logic checks (no product in the "before", wordplay that works when sung, no spoken parts unless allowed), the avoid list, timing promises not to make, and the lyrics.md doc format. Use when writing topics.md, lyrics, or the Suno prompt for a music video.
+description: How the music-video lyricist writes a company song for Suno. Covers what Suno actually takes (a lyrics box and a style description, nothing else confirmed), the topic menu that comes before any lyrics, bracketed section and delivery tags, a line-less intro and a sung ending so Suno doesn't speak fragments, the screen and sung lyric files with phonetic respelling of names and letter-spelled acronyms, the title as the hook, syllable budgeting per bar at a given BPM with rhymes on strong beats, lyric logic checks (no product in the "before", wordplay that works when sung, no spoken parts unless allowed), the avoid list, the style description, timing promises not to make, and the lyrics.md doc format. Use when writing topics.md, lyrics, or the Suno prompt for a music video.
 user-invocable: false
 ---
 
 # Suno songwriting
 
-You write the song that the whole video hangs on. The user pastes your text into Suno, so every character you write either gets sung or steers how it's sung. `examples/kizen.md` is a finished worked example; read it for format, not for content.
+You write the song that the whole video hangs on. The user pastes your text into Suno, so every character you write either gets sung or steers how it's sung. `examples/kizen.md` (upbeat electro-pop) and `examples/github.md` (a satirical power ballad) are finished worked examples; read them for format, not for content.
 
 ## What Suno takes
 
@@ -15,6 +15,8 @@ You write the song that the whole video hangs on. The user pastes your text into
 Everything else about Suno is **Inferring (unverified)**, and you say so wherever you rely on it: how it reads bracketed tags, whether `[End]` stops the song, how long the style description may be, how it pronounces anything. Don't invent other Suno features, settings, or limits, and don't tell the user to look for them.
 
 Observed in one run (Kizen): Suno sang all 28 lines once, in order, with `[Section]` and delivery tags in brackets, and added instrumental stretches the lyrics didn't ask for.
+
+Observed in another run: Suno **spoke** short, isolated lines in `[Intro]` and `[Outro]` (a counter line, "Days since <company> was down: zero", and a one-word "Resolved") instead of singing them. Full metered lines in an intro with a sung delivery cue were sung in the Kizen run. Why is **Inferring (unverified)**; short lines standing alone are the likely trigger.
 
 ## Order of work
 
@@ -29,7 +31,7 @@ Observed in one run (Kizen): Suno sang all 28 lines once, in order, with `[Secti
 | `creative/topics.md` | The numbered topic menu with sources. |
 | `creative/lyrics.md` | The human doc (format below). |
 | `creative/lyrics.screen.txt` | Bracketed tags plus lines, with **screen spellings** ("Kizen"). `pnpm align` reads this file, and on-screen text comes from it. |
-| `creative/lyrics.suno.txt` | **Identical** to the screen file except for phonetic respellings of names ("Ky-zen"). The user pastes this into Suno. |
+| `creative/lyrics.suno.txt` | **Identical** to the screen file except for phonetic respellings of names ("Ky-zen") and any letter-spelled acronyms ("S-S-H"). The user pastes this into Suno. |
 | `creative/suno-prompt.md` | Title, the style description, pronunciation notes with fallbacks, export instructions. |
 
 Both `.txt` files are plain text: tags on their own lines, one sung line per line, a blank line between sections. No markdown, no comments, no notes for the user.
@@ -37,6 +39,8 @@ Both `.txt` files are plain text: tags on their own lines, one sung line per lin
 ### Tags
 
 - One section tag per section: `[Intro]`, `[Verse 1]`, `[Pre-Chorus]`, `[Chorus]`, `[Verse 2]`, `[Bridge]`, `[Outro]`, `[End]`.
+- **The intro has no lines by default.** Write `[Intro]` with a delivery cue and nothing else (`[Intro]` then `[Soft piano, no vocals]`). `pnpm align` turns a line-less tag before the first sung line into the instrumental lead-in section. Put intro lines in only when they're full, metered lines with a sung cue.
+- **End on a sung, metered phrase**: a soft tag at the end of the final chorus (`[Soft, held to the end]` then the hook), not an `[Outro]` of fragments. Fold fragment jokes ("Resolved", a counter at zero) into metered lines in a verse or the tag.
 - Delivery cues in their own brackets on the next line: `[Playful]`, `[Building, serious]`, `[Gang vocals]`, `[Half-time, dramatic, soaring]`, `[Playful, stop-time]`. A cue may also sit mid-section where the delivery changes.
 - No `[Spoken]`, `[Spoken word]`, or `[Rap]` unless `brief.vocals` is `"spoken-ok"`.
 - No `[Instrumental]`, `[Solo]`, `[Break]`, `[Drop]`, or `[Build]` sections. Suno adds instrumental stretches on its own, and the pipeline detects them.
@@ -45,7 +49,7 @@ Both `.txt` files are plain text: tags on their own lines, one sung line per lin
 ### Respelling names for the sung file
 
 - Respell each name the way it should sound, using `brief.pronunciation.sung`: capitalised stressed syllable, hyphens between syllables ("Ky-zen").
-- Write initialisms that must be sung as letters with hyphens (`M-C-P`) in **both** files, so the diff stays clean and the aligner hears three letters. The scenes show the real spelling (`MCP`). Leave short ones Suno already sings as letters ("AI") alone; the fallback is "A.I." in the Suno file. **Inferring (unverified)** for both fallbacks.
+- Initialisms that must be sung as letters get hyphens (`M-C-P`) in the Suno file. In the screen file, either keep the hyphens too (the scenes then show `MCP`), or write the real spelling (`SSH` on screen, `S-S-H` sung). Either way each is **one token in both files**, so the word counts match and the aligner maps the sung letters onto the screen word; add the pair to the diff's `sed`. Leave short ones Suno already sings as letters ("AI") alone; the fallback is "A.I." in the Suno file. **Inferring (unverified)** for both fallbacks.
 - In `suno-prompt.md`, give one fallback respelling per name ("if it still sounds wrong, use Kai-zen and re-roll").
 - A word that is *meant* to sound like the name (the Kaizen joke) is not respelled.
 
@@ -54,9 +58,10 @@ Both `.txt` files are plain text: tags on their own lines, one sung line per lin
 ### Structure and length
 
 - Build from `brief.targetSeconds` and the BPM you'll ask for in the style description. One 4/4 bar lasts `240 / BPM` seconds (1.94 s at 124 BPM). Bars needed = target seconds / bar seconds; pick a section plan that adds up.
-- Typical shape: Intro 4 bars, Verse 8, Pre-Chorus 4, Chorus 8, Verse 4 to 8, Chorus 8, Bridge 8, Outro 4.
-- Most lines get 2 bars. Use 1-bar lines on purpose: stacked hits in a build, or a comic stop-time ending.
+- Typical shape: Intro (line-less; Suno picks its length), Verse 8, Pre-Chorus 4, Chorus 8, Verse 4 to 8, Chorus 8, Bridge 8, then a final chorus with a sung tag, or an Outro of 4 metered, sung bars.
+- Most lines get 2 bars. Use 1-bar lines on purpose: stacked hits in a build, or a comic stop-time ending, inside a section with a sung delivery cue.
 - The hook is short, sung, and repeated. The company name goes on the hook's first downbeat.
+- **The title is the hook.** Title the song with the hook phrase, and open or end the chorus on it (or both), with a held repeat at the end, belted where the genre allows. When the user loves a phrase enough to retitle the song after it, they want it sung again and again; rewrite the chorus around it.
 
 ### Syllable budget
 
@@ -75,7 +80,7 @@ Both `.txt` files are plain text: tags on their own lines, one sung line per lin
 
 1. **No product in the "before".** If the song has a before/after turn ("used to be spreadsheets"), nothing the company makes appears before the pivot. A Kizen feature (Custom Objects) can't be part of the life before Kizen. Mark the pivot line in the syllable map.
 2. **Wordplay works sung, with the real pronunciation.** Read every pun and rhyme aloud using `pronunciation.sung`, not the spelling. "Kaizen? Drop the A! Sounds the same" only works because Kizen is said KY-zen; with any other pronunciation it's false the moment it's sung. If the pronunciation is unknown, the lead asks before you write wordplay on the name.
-3. **Sung only** unless `brief.vocals` is `"spoken-ok"`. Users dislike spoken-word parts. Say "all vocals sung" in the style description too.
+3. **Sung only** unless `brief.vocals` is `"spoken-ok"`. Users dislike spoken-word parts. Say "all vocals sung" and "no spoken intro or outro" in the style description too, keep the intro line-less, and end on a sung phrase.
 4. **Avoid list.** Nothing from `brief.avoid`, and by default none of: named customers, third-party vendors or integrations by brand, compliance badges or certifications, beta or preview features, pricing, ticket or issue numbers, internal code names, competitor names.
 5. **Exact feature names.** Every product name is spelled exactly as in the UI (from `research.md`), because the screen shows it verbatim.
 6. **Every line can be shown.** On-screen copy is the sung lyrics, so a line that would embarrass the brand on a slide doesn't go in.
@@ -90,17 +95,17 @@ diff <(sed -e 's/Ky-zen/Kizen/g' creative/lyrics.suno.txt) creative/lyrics.scree
 grep -niE '\[(spoken|rap)' creative/lyrics.*.txt   # must print nothing unless spoken-ok
 ```
 
-Swap the `sed` expression for your own respellings, one `-e` per name. The `diff` proves the two files differ only by respelling.
+Swap the `sed` expression for your own respellings, one `-e` per name or acronym (`-e 's/S-S-H/SSH/g'`). The `diff` proves the two files differ only by respelling.
 
 ## The style description (suno-prompt.md)
 
-- One line: genre and sub-genre, BPM, groove, vocal type from `brief.vocalStyle`, "all vocals sung", the energy arc (cinematic intro, gang-vocal chorus, epic build), and the tone. Give its character count.
+- One line: genre and sub-genre (from `brief.genre`), BPM, groove, vocal type from `brief.vocalStyle`, "all vocals sung", "no spoken intro or outro" when the vocals are sung only, the energy arc (cinematic intro, gang-vocal chorus, epic build), and the tone. Give its character count.
 - Name a swap for the vocal ("male" to "female" or "duet").
-- **Inferring (unverified):** the style description's length limit. Keep it under 200 characters; the Kizen one was 172 and worked.
+- **Inferring (unverified):** the style description's length limit. Keep it at or under about 200 characters; 172 and 191 both worked. When it's tight, drop what the genre implies (a power ballad implies big drums) and keep the BPM your syllable plan is built on.
 
 ## Timing: don't promise it
 
-Suno songs come back **longer than planned** and add instrumental sections: the Kizen song was planned at 48 bars (about 93 s) and came back at 131 s, with a 7 s build after the intro and a 16 s instrumental after the outro. So:
+Suno songs come back **longer than planned** and add instrumental sections: the Kizen song was planned at 48 bars (about 93 s) and came back at 131 s, with a 7 s build after the intro and a 16 s instrumental after the outro. A ballad planned at about 2:45 came back at 4:23, with a long piano intro and a 31 s instrumental tail. Its tempo moved too: lyrics written at 80 BPM came back in a take the analysis read at about 131 BPM with a half-time feel, and the alignment still worked. So:
 
 - Say "about N seconds as written; Suno usually runs longer" and nothing more precise.
 - Never tell the user the video timing depends on the bar counts. Section times come from `pnpm align`, not from your plan.

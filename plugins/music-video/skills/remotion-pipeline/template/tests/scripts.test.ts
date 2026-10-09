@@ -2,14 +2,15 @@
 // path: success, a failing child process, or SIGINT/SIGTERM. Real remotion,
 // ffmpeg and python are replaced with tiny fake executables.
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
-import {after, describe, it} from 'node:test';
+import {after, before, describe, it} from 'node:test';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {main as analyzeMain} from '../scripts/analyze.mjs';
 import {main as renderMain, parseRenderArgs} from '../scripts/render.mjs';
+import {jitter, main as jitterMain, parseJitterArgs} from '../scripts/jitter.mjs';
 import {contactSheetTimes, main as contactSheetMain, parseContactSheetArgs} from '../scripts/contact-sheet.mjs';
 import {
   main as previewMain,
@@ -19,11 +20,12 @@ import {
   PREVIEW_TARGET_BYTES,
   previewBitrates,
 } from '../scripts/preview.mjs';
-import {parseStillArgs} from '../scripts/still.mjs';
+import {main as stillMain, parseStillArgs} from '../scripts/still.mjs';
 import {main as alignMain} from '../scripts/align.mjs';
 import {main as setupAlignMain} from '../scripts/setup-align.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PIPELINE_FPS = (JSON.parse(readFileSync(join(projectRoot, 'src/pipeline.json'), 'utf8')) as {fps: number}).fps;
 const scratch = mkdtempSync(join(tmpdir(), 'music-video-scripts-test-'));
 after(() => rmSync(scratch, {recursive: true, force: true}));
 
@@ -47,6 +49,8 @@ const remotionWrites = (exitCode: number) => fakeBin('remotion', `fs.writeFileSy
 // ffmpeg's output path is its last argument.
 const ffmpegWrites = (exitCode: number) =>
   fakeBin('ffmpeg', `fs.writeFileSync(args[args.length - 1], 'mp4'); process.exit(${exitCode});`);
+// render probes the intermediate's frame rate; this fake reports `rate` (e.g. '30/1').
+const ffprobeRate = (rate: string) => fakeBin('ffprobe', `process.stdout.write(${JSON.stringify(`${rate}\n`)});`);
 
 /** Poll until `cond` holds. The deadline is only a safety net, never the assertion. */
 const waitFor = async (cond: () => boolean, what: string, timeoutMs = 10_000) => {
@@ -116,6 +120,7 @@ const silence = <T>(fn: () => Promise<T>) => {
 describe('parseRenderArgs', () => {
   it('accepts --out <path> and --out=<path>, forwards --flag=value', () => {
     assert.deepEqual(parseRenderArgs(['--out', 'out/a.mp4', '--frames=0-89'], {root: '/r'}), {
+      composition: null,
       output: '/r/out/a.mp4',
       passthrough: ['--frames=0-89'],
     });
@@ -136,7 +141,7 @@ describe('parseRenderArgs', () => {
 
 describe('render cleanup', () => {
   const run = (outDir: string, bins: {remotionBin: string; ffmpegBin: string}) =>
-    silence(() => renderMain(['--out', join(outDir, 'video.mp4')], {root: projectRoot, ...bins}));
+    silence(() => renderMain(['--out', join(outDir, 'video.mp4')], {root: projectRoot, ffprobeBin: ffprobeRate(`${PIPELINE_FPS}/1`), ...bins}));
 
   it('remotion failing after writing the intermediate: exit 1, nothing left in the output dir', async () => {
     const outDir = freshDir('render-remotion-fails');
@@ -178,6 +183,217 @@ describe('render cleanup', () => {
       assert.deepEqual(readdirSync(outDir), []);
     });
   }
+});
+
+describe('render --composition', () => {
+  // A project root with a pipeline.json of known values, so default outputs land
+  // in scratch and the expectations don't depend on the project's own settings.
+  const pipelineRoot = () => {
+    const root = freshDir('comp-root');
+    mkdirSync(join(root, 'src'), {recursive: true});
+    writeFileSync(join(root, 'src/pipeline.json'), JSON.stringify({compositionId: 'MusicVideo', outputName: 'music-video', fps: 30}));
+    return root;
+  };
+  /**
+   * Fakes that append their argv (one JSON line per call) to a log, then write
+   * their output. The fake ffprobe reports the intermediate's frame rate as `rate`.
+   */
+  const capturing = (dir: string, rate: string) => {
+    const remotionLog = join(dir, 'remotion.jsonl');
+    const ffmpegLog = join(dir, 'ffmpeg.jsonl');
+    const ffprobeLog = join(dir, 'ffprobe.jsonl');
+    return {
+      remotionLog,
+      ffmpegLog,
+      ffprobeLog,
+      remotionBin: fakeBin('remotion', `fs.appendFileSync(${JSON.stringify(remotionLog)}, JSON.stringify(args) + '\\n'); fs.writeFileSync(args[3], 'mkv');`),
+      ffmpegBin: fakeBin('ffmpeg', `fs.appendFileSync(${JSON.stringify(ffmpegLog)}, JSON.stringify(args) + '\\n'); fs.writeFileSync(args[args.length - 1], 'mp4');`),
+      ffprobeBin: fakeBin('ffprobe', `fs.appendFileSync(${JSON.stringify(ffprobeLog)}, JSON.stringify(args) + '\\n'); process.stdout.write(${JSON.stringify(`${rate}\n`)});`),
+    };
+  };
+  const calls = (log: string): string[][] =>
+    existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as string[]) : [];
+  /** Run `pnpm render <argv>` against `root` with argv-capturing fakes. */
+  const renderCapture = async (root: string, argv: string[], rate = '30/1') => {
+    const fakes = capturing(freshDir('comp-log'), rate);
+    const {remotionBin, ffmpegBin, ffprobeBin} = fakes;
+    const code = await silence(() => renderMain(argv, {root, remotionBin, ffmpegBin, ffprobeBin}));
+    return {code, remotion: calls(fakes.remotionLog), ffmpeg: calls(fakes.ffmpegLog), ffprobe: calls(fakes.ffprobeLog)};
+  };
+  // The ffmpeg remux exactly as render.mjs has always written it.
+  const expectedFfmpeg = (outDir: string) => [
+    '-v', 'error', '-y',
+    '-i', join(outDir, `.intermediate-${process.pid}.mkv`),
+    '-map', '0:v:0', '-map', '0:a:0?',
+    '-c:v', 'copy',
+    '-video_track_timescale', '30',
+    '-c:a', 'aac', '-b:a', '320k',
+    '-movflags', '+faststart',
+    join(outDir, `.partial-${process.pid}.mp4`),
+  ];
+
+  it('render without --composition keeps pipeline compositionId and default output', async () => {
+    const root = pipelineRoot();
+    assert.deepEqual(parseRenderArgs(['--frames=0-9'], {root}), {
+      composition: null,
+      output: join(root, 'out/music-video.mp4'),
+      passthrough: ['--frames=0-9'],
+    });
+    const r = await renderCapture(root, ['--frames=0-9']);
+    assert.equal(r.code, 0);
+    const outDir = join(root, 'out');
+    assert.deepEqual(r.remotion, [
+      ['render', 'src/index.ts', 'MusicVideo', join(outDir, `.intermediate-${process.pid}.mkv`), '--codec=h264', '--audio-codec=pcm-16', '--frames=0-9'],
+    ]);
+    assert.deepEqual(r.ffmpeg, [expectedFfmpeg(outDir)]);
+    // One frame-rate probe of the intermediate, between the two unchanged steps.
+    assert.deepEqual(r.ffprobe, [
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'default=nw=1:nk=1', join(outDir, `.intermediate-${process.pid}.mkv`)],
+    ]);
+    assert.deepEqual(readdirSync(outDir), ['music-video.mp4']);
+  });
+
+  it('render refuses frame-rate overrides: --fps and --every-nth-frame are reserved', () => {
+    for (const flag of ['--fps=60', '--every-nth-frame=2']) {
+      assert.throws(() => parseRenderArgs([flag], {root: '/r'}), /can't be used: pnpm render writes the video at src\/pipeline\.json's fps/, flag);
+    }
+    // Size and length overrides don't touch the frame rate.
+    assert.deepEqual(parseRenderArgs(['--width=1280', '--height=720', '--duration=90', '--out=x.mp4'], {root: '/r'}).passthrough, [
+      '--width=1280',
+      '--height=720',
+      '--duration=90',
+    ]);
+  });
+
+  it('a plain render whose intermediate is not at pipeline fps (Config.overrideFps) stops before the remux', async () => {
+    const root = pipelineRoot();
+    const r = await renderCapture(root, [], '60/1');
+    assert.equal(r.code, 1);
+    assert.equal(r.remotion.length, 1);
+    assert.equal(r.ffprobe.length, 1);
+    assert.deepEqual(r.ffmpeg, [], 'remuxed a 60 fps intermediate at the 30 fps timescale');
+    assert.deepEqual(readdirSync(join(root, 'out')), []);
+  });
+
+  it('render --composition replaces only the composition argument', async () => {
+    const root = pipelineRoot();
+    const out = join(root, 'out/x.mp4');
+    const main = await renderCapture(root, ['--frames=0-9', '--out', out]);
+    const inline = await renderCapture(root, ['--composition=ConceptA', '--frames=0-9', '--out', out]);
+    const spaced = await renderCapture(root, ['--frames=0-9', '--composition', 'ConceptA', '--out', out]);
+    for (const r of [main, inline, spaced]) {
+      assert.equal(r.code, 0);
+      assert.equal(r.remotion.length, 1);
+    }
+    const [mainArgs] = main.remotion as [string[]];
+    for (const r of [inline, spaced]) {
+      const [args] = r.remotion as [string[]];
+      assert.equal(args[2], 'ConceptA');
+      assert.deepEqual([...args.slice(0, 2), ...args.slice(3)], [...mainArgs.slice(0, 2), ...mainArgs.slice(3)]);
+      assert.deepEqual(r.ffmpeg, main.ffmpeg);
+    }
+    assert.equal(mainArgs[2], 'MusicVideo');
+    assert.deepEqual(main.ffmpeg, [expectedFfmpeg(join(root, 'out'))]);
+  });
+
+  it('render --composition without --out defaults to out/<id>.mp4', async () => {
+    const root = pipelineRoot();
+    mkdirSync(join(root, 'out'));
+    writeFileSync(join(root, 'out/music-video.mp4'), 'MAIN');
+    assert.equal(parseRenderArgs(['--composition=ConceptA'], {root}).output, join(root, 'out/ConceptA.mp4'));
+    const r = await renderCapture(root, ['--composition=ConceptA']);
+    assert.equal(r.code, 0);
+    assert.deepEqual(readdirSync(join(root, 'out')).sort(), ['ConceptA.mp4', 'music-video.mp4']);
+    assert.equal(readFileSync(join(root, 'out/music-video.mp4'), 'utf8'), 'MAIN');
+    // Naming the main composition is the plain render; an id that collides with outputName must pass --out.
+    assert.equal(parseRenderArgs(['--composition=MusicVideo'], {root}).output, join(root, 'out/music-video.mp4'));
+    assert.throws(() => parseRenderArgs(['--composition=music-video'], {root}), /main video's output; pass --out/);
+    // Default macOS volumes are case-insensitive: out/Music-Video.mp4 IS out/music-video.mp4.
+    assert.throws(() => parseRenderArgs(['--composition=Music-Video'], {root}), /main video's output; pass --out/);
+    assert.throws(() => parseRenderArgs(['--composition=MUSIC-VIDEO'], {root}), /main video's output; pass --out/);
+    const collide = await renderCapture(root, ['--composition=Music-Video']);
+    assert.equal(collide.code, 1);
+    assert.deepEqual(collide.remotion, []);
+    assert.equal(readFileSync(join(root, 'out/music-video.mp4'), 'utf8'), 'MAIN');
+    assert.deepEqual(readdirSync(join(root, 'out')).sort(), ['ConceptA.mp4', 'music-video.mp4']);
+    assert.equal(parseRenderArgs(['--composition=music-video', '--out=out/alt.mp4'], {root}).output, join(root, 'out/alt.mp4'));
+  });
+
+  it("render --composition stops when the composition's fps isn't pipeline.json's", async () => {
+    const root = pipelineRoot();
+    const outDir = join(root, 'out');
+    const at60 = await renderCapture(root, ['--composition=Fast'], '60/1');
+    assert.equal(at60.code, 1);
+    assert.deepEqual(at60.ffprobe.map((a) => a[a.length - 1]), [join(outDir, `.intermediate-${process.pid}.mkv`)]);
+    assert.deepEqual(at60.ffmpeg, [], 'remuxed a 60 fps intermediate at the 30 fps timescale');
+    assert.deepEqual(readdirSync(outDir), [], 'output or temp files left behind');
+    const at30 = await renderCapture(root, ['--composition=Fast'], '30/1');
+    assert.equal(at30.code, 0);
+    assert.deepEqual(readdirSync(outDir), ['Fast.mp4']);
+  });
+
+  // The same check against real ffprobe output for a real MKV, as Remotion writes it.
+  const realProbeSkip = ['ffmpeg', 'ffprobe'].every((bin) => spawnSync(bin, ['-version'], {stdio: 'ignore'}).status === 0)
+    ? false
+    : 'ffmpeg/ffprobe not on PATH';
+  it('render --composition probes the real intermediate frame rate', {skip: realProbeSkip}, async () => {
+    const mkv = (rate: number) => {
+      const file = join(freshDir('mkv'), `${rate}.mkv`);
+      const res = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=s=64x36:r=${rate}:d=0.5`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+      assert.equal(res.status, 0, String(res.stderr));
+      return file;
+    };
+    const run = async (source: string) => {
+      const root = pipelineRoot();
+      const remotionBin = fakeBin('remotion', `fs.copyFileSync(${JSON.stringify(source)}, args[3]);`);
+      const code = await silence(() => renderMain(['--composition=Alt'], {root, remotionBin, ffmpegBin: ffmpegWrites(0), ffprobeBin: 'ffprobe'}));
+      return {code, files: readdirSync(join(root, 'out'))};
+    };
+    assert.deepEqual(await run(mkv(60)), {code: 1, files: []});
+    assert.deepEqual(await run(mkv(30)), {code: 0, files: ['Alt.mp4']});
+  });
+
+  it('render rejects --composition without a value', async () => {
+    for (const argv of [['--composition'], ['--composition='], ['--composition', '--frames=0-9'], ['--frames=0-9', '--composition', '-x']]) {
+      assert.throws(() => parseRenderArgs(argv, {root: '/r'}), /--composition needs a composition id/, JSON.stringify(argv));
+    }
+    assert.throws(() => parseRenderArgs(['--composition=../evil'], {root: '/r'}), /isn't a valid composition id/);
+    const r = await renderCapture(pipelineRoot(), ['--composition']);
+    assert.equal(r.code, 1);
+    assert.deepEqual(r.remotion, []);
+  });
+
+  it('render rejects a repeated --composition', async () => {
+    assert.throws(() => parseRenderArgs(['--composition=A', '--composition=B'], {root: '/r'}), /--composition given twice \("A" and "B"\)/);
+    assert.throws(() => parseRenderArgs(['--composition', 'A', '--composition=A'], {root: '/r'}), /--composition given twice/);
+    const r = await renderCapture(pipelineRoot(), ['--composition=A', '--composition=B']);
+    assert.equal(r.code, 1);
+    assert.deepEqual(r.remotion, []);
+  });
+
+  it('render does not forward --composition to remotion', async () => {
+    const root = pipelineRoot();
+    const argv = ['--composition', 'ConceptA', '--frames=0-9', '--image-format=png'];
+    assert.deepEqual(parseRenderArgs(argv, {root}).passthrough, ['--frames=0-9', '--image-format=png']);
+    const r = await renderCapture(root, argv);
+    assert.equal(r.code, 0);
+    const [args] = r.remotion as [string[]];
+    assert.deepEqual(args.slice(4), ['--codec=h264', '--audio-codec=pcm-16', '--frames=0-9', '--image-format=png']);
+    assert.equal(args.filter((a) => a === 'ConceptA').length, 1);
+    assert.ok(!args.some((a) => a.startsWith('--composition')), `forwarded: ${JSON.stringify(args)}`);
+  });
+
+  it('render forwards --image-format', async () => {
+    const root = pipelineRoot();
+    const out = join(root, 'out/master.mp4');
+    const plain = await renderCapture(root, ['--out', out]);
+    const png = await renderCapture(root, ['--image-format=png', '--out', out]);
+    assert.equal(png.code, 0);
+    const [plainArgs] = plain.remotion as [string[]];
+    const [pngArgs] = png.remotion as [string[]];
+    assert.deepEqual(pngArgs, [...plainArgs, '--image-format=png']);
+    assert.deepEqual(png.ffmpeg, plain.ffmpeg);
+  });
 });
 
 describe('signal shutdown', () => {
@@ -536,11 +752,33 @@ describe('contact sheet', () => {
 
 describe('still', () => {
   it('parseStillArgs: default out/still.png, --out in both forms, flags pass through', () => {
-    assert.deepEqual(parseStillArgs(['--frame=120'], {root: '/r'}), {output: '/r/out/still.png', passthrough: ['--frame=120']});
+    assert.deepEqual(parseStillArgs(['--frame=120'], {root: '/r'}), {composition: null, output: '/r/out/still.png', passthrough: ['--frame=120']});
     assert.equal(parseStillArgs(['--out=out/wip-1/f-120.png'], {root: '/r'}).output, '/r/out/wip-1/f-120.png');
     assert.equal(parseStillArgs(['--out', 'out/a.jpg'], {root: '/r'}).output, '/r/out/a.jpg');
     assert.throws(() => parseStillArgs(['120'], {root: '/r'}), /unexpected argument "120"/);
     assert.throws(() => parseStillArgs(['--out=x.mp4'], {root: '/r'}), /must end in \.png/);
+  });
+  it('still --composition replaces only the composition argument (shared parsing with render)', async () => {
+    assert.deepEqual(parseStillArgs(['--composition=ConceptA', '--frame=5'], {root: '/r'}), {
+      composition: 'ConceptA',
+      output: '/r/out/still.png',
+      passthrough: ['--frame=5'],
+    });
+    assert.throws(() => parseStillArgs(['--composition'], {root: '/r'}), /--composition needs a composition id/);
+    assert.throws(() => parseStillArgs(['--composition=', '--frame=5'], {root: '/r'}), /--composition needs a composition id/);
+    assert.throws(() => parseStillArgs(['--composition=A', '--composition', 'B'], {root: '/r'}), /--composition given twice/);
+
+    const root = freshDir('still-root');
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src/pipeline.json'), JSON.stringify({compositionId: 'MusicVideo', outputName: 'music-video', fps: 30}));
+    const log = join(root, 'remotion.jsonl');
+    const remotionBin = fakeBin('remotion', `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');`);
+    const out = join(root, 'out/f.png');
+    assert.equal(await silence(() => stillMain(['--frame=5', '--out', out], {root, remotionBin})), 0);
+    assert.equal(await silence(() => stillMain(['--composition', 'ConceptA', '--frame=5', '--out', out], {root, remotionBin})), 0);
+    const [plain, concept] = readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as string[]) as [string[], string[]];
+    assert.deepEqual(plain, ['still', 'src/index.ts', 'MusicVideo', out, '--frame=5']);
+    assert.deepEqual(concept, ['still', 'src/index.ts', 'ConceptA', out, '--frame=5']);
   });
 });
 
@@ -575,5 +813,151 @@ fs.writeFileSync(dir + '/bin/python', '#!/bin/sh\nexit 1\n'); fs.chmodSync(dir +
     chmodSync(join(root, '.venv-align/bin/python'), 0o755);
     assert.equal(await silence(() => setupAlignMain([], {root, pythonCandidates: [python]})), 1);
     assert.equal(existsSync(join(root, '.venv-align/bin/python')), true);
+  });
+});
+
+describe('parseJitterArgs', () => {
+  it('reads --from as a frame or seconds, --frames, --crop, --max, --threshold; --in defaults to the render output', () => {
+    assert.deepEqual(parseJitterArgs(['--from=120', '--frames', '30'], {root: projectRoot}), {
+      input: join(projectRoot, 'out/music-video.mp4'),
+      from: {frame: 120},
+      frames: 30,
+      crop: null,
+      max: null,
+      threshold: 225,
+    });
+    const all = parseJitterArgs(['--in', 'a.mp4', '--from', '40.5s', '--frames=10', '--crop=10,20,300,100', '--max', '0.25', '--threshold=200'], {root: '/r'});
+    assert.deepEqual(all, {input: '/r/a.mp4', from: {seconds: 40.5}, frames: 10, crop: {x: 10, y: 20, w: 300, h: 100}, max: 0.25, threshold: 200});
+  });
+  it('rejects a missing --from or --frames, bad values, repeats and unknown args', () => {
+    const r = {root: '/r'};
+    assert.throws(() => parseJitterArgs(['--frames=10'], r), /--from is required/);
+    assert.throws(() => parseJitterArgs(['--from=0'], r), /--frames is required/);
+    assert.throws(() => parseJitterArgs(['--from=1.5', '--frames=10'], r), /--from must be a frame number/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=1'], r), /at least 2/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=10', '--crop=1,2,3'], r), /--crop must be x,y,w,h/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=10', '--max=-1'], r), /--max needs a value/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=10', '--max=abc'], r), /--max must be a number/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=10', '--threshold=256'], r), /--threshold must be an integer 0\.\.255/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--from=1', '--frames=10'], r), /--from given twice/);
+    assert.throws(() => parseJitterArgs(['--from=0', '--frames=10', 'x.mp4'], r), /unexpected argument "x\.mp4"/);
+  });
+  it('a missing venv fails with the setup command before anything is decoded', async () => {
+    const dir = freshDir('jitter-novenv');
+    const input = join(dir, 'in.mp4');
+    writeFileSync(input, 'mp4');
+    const tmpRoot = freshDir('tmp');
+    await assert.rejects(
+      jitter({input, from: {frame: 0}, frames: 2, crop: null, max: null, pythonBin: join(dir, '.venv/bin/python'), tmpRoot, ffmpegBin: join(dir, 'no-ffmpeg')}, new Set()),
+      /Python venv missing.*pnpm setup:audio/,
+    );
+    assert.deepEqual(readdirSync(tmpRoot), []);
+  });
+});
+
+const venvPython = join(projectRoot, '.venv/bin/python');
+const hasFfmpeg = ['ffmpeg', 'ffprobe'].every((bin) => spawnSync(bin, ['-version'], {stdio: 'ignore'}).status === 0);
+const jitterSkip = !hasFfmpeg
+  ? 'ffmpeg/ffprobe not on PATH'
+  : !existsSync(venvPython)
+    ? '.venv missing: run `pnpm setup:audio` to measure jitter'
+    : false;
+
+describe('jitter measurements', {skip: jitterSkip}, () => {
+  // 30-frame 320x180 clips: a frozen 120x80 testsrc card on black, drawn at
+  // `scale`x and box-downscaled, so a 1 px offset at 2x is an exact half-pixel
+  // shift (a quarter at 4x). Encoded losslessly (x264 qp 0) so only the motion
+  // differs between frames.
+  const clipsDir = freshDir('jitter-clips');
+  const clip = (name: string, x: string, scale = 2) => {
+    const file = join(clipsDir, `${name}.mp4`);
+    const res = spawnSync('ffmpeg', [
+      '-v', 'error', '-y',
+      '-f', 'lavfi', '-i', `color=c=black:s=${320 * scale}x${180 * scale}:r=30:d=1,format=rgb24`,
+      '-f', 'lavfi', '-i', `testsrc=s=${120 * scale}x${80 * scale}:r=30:d=1`,
+      '-filter_complex',
+      `[1]trim=end_frame=1,loop=loop=-1:size=1,setpts=N/30/TB[s];[0][s]overlay=x='${x}':y=${50 * scale}:shortest=1:eval=frame:format=rgb,scale=320:180:flags=area,format=yuv420p`,
+      '-c:v', 'libx264', '-qp', '0', '-preset', 'ultrafast',
+      file,
+    ]);
+    assert.equal(res.status, 0, `ffmpeg failed to make ${name}: ${res.stderr}`);
+    return file;
+  };
+  // The frame index, from the timestamp.
+  const n = 'floor(t*30+0.5)';
+  const clips = {static: '', quarter: '', half: '', one: '', step: ''};
+  before(() => {
+    clips.static = clip('static', '200');
+    clips.quarter = clip('quarter', `400+${n}`, 4);
+    clips.half = clip('half', `200+${n}`);
+    clips.one = clip('one', `200+2*${n}`);
+    // Still, except one 1 px jump between frames 10 and 11.
+    clips.step = clip('step', '200+2*gte(t,10.5/30)');
+  });
+  const measure = (input: string, from: {frame: number} | {seconds: number}, frames: number, extra: {crop?: {x: number; y: number; w: number; h: number}; max?: number} = {}) =>
+    silence(() => jitter({input, from, frames, crop: extra.crop ?? null, max: extra.max ?? null, root: projectRoot, tmpRoot: freshDir('tmp')}, new Set()));
+
+  it('jitter reports no shift for a static clip', async () => {
+    const {pairs} = await measure(clips.static, {frame: 0}, 10);
+    assert.equal(pairs.length, 9);
+    for (const p of pairs) {
+      assert.ok(p.shift < 0.01, `pair ${p.from}->${p.to}: shift ${p.shift}`);
+      assert.ok(p.diff < 0.01, `pair ${p.from}->${p.to}: diff ${p.diff}`);
+    }
+  });
+
+  it('jitter detects a known sub-pixel shift', async () => {
+    const one = await measure(clips.one, {frame: 0}, 10);
+    for (const p of one.pairs) {
+      assert.ok(Math.abs(p.dx - 1) < 0.05 && Math.abs(p.dy) < 0.05, `1 px clip, pair ${p.from}->${p.to}: dx ${p.dx} dy ${p.dy}`);
+    }
+    // The same motion seen through a crop that holds the card throughout.
+    const cropped = await measure(clips.one, {frame: 0}, 10, {crop: {x: 80, y: 40, w: 200, h: 110}});
+    for (const p of cropped.pairs) assert.ok(Math.abs(p.dx - 1) < 0.05, `cropped 1 px clip: dx ${p.dx}`);
+    // Odd size and origin: the crop must not snap to the yuv420p chroma grid.
+    const odd = await measure(clips.one, {frame: 0}, 10, {crop: {x: 81, y: 41, w: 201, h: 111}});
+    assert.equal(odd.pairs.length, 9);
+    for (const p of odd.pairs) assert.ok(Math.abs(p.dx - 1) < 0.05, `odd crop, 1 px clip: dx ${p.dx}`);
+    const half = await measure(clips.half, {frame: 0}, 10);
+    for (const p of half.pairs) {
+      assert.ok(Math.abs(p.dx - 0.5) < 0.1 && Math.abs(p.dy) < 0.1, `0.5 px clip, pair ${p.from}->${p.to}: dx ${p.dx} dy ${p.dy}`);
+    }
+    const meanDx = half.pairs.reduce((a: number, p: {dx: number}) => a + p.dx, 0) / half.pairs.length;
+    assert.ok(Math.abs(meanDx - 0.5) < 0.05, `0.5 px clip: mean dx ${meanDx}`);
+    // A parabolic peak fit reads these as ~0.12 px; the Dirichlet fit in jitter.py doesn't.
+    const quarter = await measure(clips.quarter, {frame: 0}, 10);
+    for (const p of quarter.pairs) {
+      assert.ok(Math.abs(p.dx - 0.25) < 0.1 && Math.abs(p.dy) < 0.1, `0.25 px clip, pair ${p.from}->${p.to}: dx ${p.dx} dy ${p.dy}`);
+    }
+  });
+
+  it('jitter --from selects that exact frame, given as a frame or in seconds', async () => {
+    const shiftFrom = async (from: {frame: number} | {seconds: number}) => {
+      const {pairs, startFrame} = await measure(clips.step, from, 2);
+      return {startFrame, shift: (pairs[0] as {shift: number}).shift};
+    };
+    const at9 = await shiftFrom({frame: 9});
+    const at10 = await shiftFrom({frame: 10});
+    const at11 = await shiftFrom({frame: 11});
+    assert.ok(at9.shift < 0.01, `9->10: ${at9.shift}`);
+    assert.ok(Math.abs(at10.shift - 1) < 0.05, `10->11: ${at10.shift}`);
+    assert.ok(at11.shift < 0.01, `11->12: ${at11.shift}`);
+    const seconds = await shiftFrom({seconds: 10 / 30});
+    assert.equal(seconds.startFrame, 10);
+    assert.ok(Math.abs(seconds.shift - 1) < 0.05, `10/30 s: ${seconds.shift}`);
+    await assert.rejects(measure(clips.step, {frame: 25}, 10), /only 5 of 10 frames from frame 25/);
+  });
+
+  it('jitter --max fails above threshold', async () => {
+    const run = (input: string, max: string) => {
+      const tmpRoot = freshDir('tmp');
+      return silence(() => jitterMain(['--in', input, '--from=0', '--frames=5', `--max=${max}`], {root: projectRoot, tmpRoot})).then((code) => {
+        assert.deepEqual(readdirSync(tmpRoot), [], 'the decoded frames were left behind');
+        return code;
+      });
+    };
+    assert.equal(await run(clips.one, '0.5'), 1);
+    assert.equal(await run(clips.one, '1.5'), 0);
+    assert.equal(await run(clips.static, '0.05'), 0);
   });
 });

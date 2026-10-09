@@ -1,6 +1,6 @@
 ---
 name: brand-extraction
-description: How the music-video company researcher pulls a company's brand into a video project: finding colour and type tokens in a design-system repo or, without one, in the website's CSS; mapping them onto the src/brand.json schema; checking the font licence and falling back to a Google font through @remotion/google-fonts; finding the logo SVG and baking it into on-dark and on-light variants with no CSS variables left; and citing a source for every token. Use when writing src/brand.json or public/brand/ for a music video.
+description: How the music-video company researcher pulls a company's brand into a video project. Covers finding colour and type tokens in a design-system repo or, without one, in the website's CSS; mapping them onto the src/brand.json schema; capturing a vivid secondary or marketing palette with contrast warnings when the brief wants colour; checking the font licence and falling back to a Google font through @remotion/google-fonts; finding the logo SVG, quoting the brand's logo usage rules, and baking it into on-dark and on-light variants with no CSS variables left; and citing a source for every token. Use when writing src/brand.json or public/brand/ for a music video.
 user-invocable: false
 ---
 
@@ -69,11 +69,20 @@ rg -n --glob '!**/node_modules/**' -i '@font-face|fontFamily|font-family' <repo>
 
 Use the source's exact hex values; never adjust or invent a colour to fill a slot. When the brand has no candidate for a slot, reuse the nearest real token and say so in the Brand section.
 
+`brand.json` takes only these keys; the schema in `src/lib/brand.ts` rejects anything else.
+
 Check contrast before writing the file (WCAG relative luminance):
 
 ```sh
 node -e 'const L=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2]};const r=(a,b)=>{const[x,y]=[L(a),L(b)].sort((p,q)=>q-p);return((x+.05)/(y+.05)).toFixed(2)};console.log(r(process.argv[1],process.argv[2]))' '#FFFFFF' '#002A2C'
 ```
+
+## Vivid palette
+
+A product UI is often muted: greys, one brand colour, and status colours. When `brief.visualStyle` asks for colour, or the tone calls for it, also capture the brand's **secondary or marketing palette**: the ramps on its brand site, product launch pages, and marketing illustrations, and the UI's status colours. One run's brand site had full ramps (purple, blue, green, orange, lime) that its product UI never shows, and those ramps carried the video.
+
+- Put them in a **Vivid palette** table in the Brand section of `research.md`: name, hex, what it's for on the source (a product, a status, a campaign), and its source, labelled like every other token. They don't go in `brand.json`; the director adds the ones it uses to `theme.ts` as tokens.
+- **Contrast warnings.** Run the contrast check on the pairs a video would use: white and the darkest step on each colour, and each colour on `background`. List every pair under 4.5:1 for body text (3:1 for hits of 160 px and up) as a warning ("white on lime #D3FA37: 1.2, use dark text").
 
 ## Fonts and licences
 
@@ -98,6 +107,18 @@ The module name is the family without spaces. `ERR_MODULE_NOT_FOUND` means the f
 - **Repo:** `rg --files <repo> -g '*.svg' | rg -i 'logo|word-?mark|brand'`, plus components named `Logo*` with an inline `<svg>`. Kizen's was `apps/react-app/src/components/Kizen/kizen-word-mark.svg`.
 - **Website:** the `<svg>` or `<img src="*.svg">` inside the header's home link, then `/favicon.svg`, then a press-kit SVG.
 - Prefer the wordmark or full lockup over the icon. A raster logo (PNG) is the last resort: say so in the report, because it blurs when scaled for a hit.
+
+### Usage rules
+
+Find the company's logo or brand guidelines (a brand site, `/brand`, `/press`, a press kit) and quote what they say, verbatim with the URL, in the Brand section:
+
+- whether the mark may be recoloured
+- whether it may be distorted, stretched, or animated
+- whether it may be combined with other words or elements
+- whether it needs written permission, and whether it may suggest endorsement
+- whether parody or commentary is mentioned at all (it usually isn't; say so)
+
+The lead uses the quote to ask the user whether the logo appears untouched, altered as parody, or not at all (`brief.logoUse`). When there are no published rules, say that. If `brief.logoUse` is already `"omitted"`, still quote the rules; nothing will render the logo files.
 
 ### Bake it
 

@@ -3,14 +3,28 @@ import {describe, it} from 'node:test';
 import rawBrand from '../src/brand.json';
 import {neutralScale, parseBrand, toStaticPath} from '../src/lib/brand';
 import {fontStack} from '../src/lib/fonts';
+import placeholderBrand from './brand.placeholder.json';
 
-// Mutable deep copies, edited freely to build invalid inputs.
+// Mutable deep copies of the template's placeholder brand (a fixture, so these
+// tests mean the same thing once src/brand.json holds a real company), edited
+// freely to build invalid inputs.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const base = (): any => structuredClone(rawBrand);
+const base = (): any => structuredClone(placeholderBrand);
 
 describe('parseBrand', () => {
-  it('accepts the committed placeholder brand.json and keeps every neutral step', () => {
+  it('accepts the committed brand.json and keeps every neutral step', () => {
     const brand = parseBrand(rawBrand);
+    assert.ok(brand.name.trim() !== '');
+    // Every step brand.json lists ("$comment" aside) survives parsing unchanged.
+    const listed: Record<string, unknown> = {...rawBrand.colors.neutral};
+    delete listed.$comment;
+    assert.deepEqual(brand.colors.neutral, listed);
+    assert.ok(Object.keys(brand.colors.neutral).length >= 3);
+    assert.equal(brand.logo.path, rawBrand.logo.path);
+  });
+
+  it('accepts the placeholder brand and keeps every neutral step', () => {
+    const brand = parseBrand(placeholderBrand);
     assert.equal(brand.name, 'Example Company');
     assert.deepEqual(Object.keys(brand.colors.neutral), ['50', '100', '300', '500', '700', '900']);
     assert.equal(brand.logo.path, 'public/brand/logo.svg');

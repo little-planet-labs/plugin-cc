@@ -19,7 +19,8 @@
     "still": "node scripts/still.mjs",
     "render": "node scripts/render.mjs",
     "preview": "node scripts/preview.mjs",
-    "contact-sheet": "node scripts/contact-sheet.mjs"
+    "contact-sheet": "node scripts/contact-sheet.mjs",
+    "jitter": "node scripts/jitter.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.527",

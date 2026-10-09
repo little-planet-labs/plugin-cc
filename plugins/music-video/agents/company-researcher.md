@@ -1,6 +1,6 @@
 ---
 name: company-researcher
-description: Research agent for a music-video project. Given a company name, website, and optional repo paths, it gathers public positioning, product features in their user-facing names, brand colors, fonts, and logo, and an avoid list, then writes creative/research.md, a draft creative/brief.json, src/brand.json, and public/brand/logo.svg, and returns a numbered list of candidate topics with sources. Use it for the research phase, after the brief interview and before the topic menu. The music-video skill's lead spawns it; not intended to be invoked directly.
+description: Research agent for a music-video project. Given a company name, website, and optional repo paths or community sources, it gathers public positioning (or, for a satire, the community's reaction), product features in their user-facing names, brand colors including a vivid marketing palette, fonts, the logo and its usage rules, and an avoid list, then writes creative/research.md, a draft creative/brief.json, src/brand.json, and public/brand/logo.svg, and returns a numbered list of candidate topics with sources. Use it for the research phase, after the brief interview and before the topic menu. The music-video skill's lead spawns it; not intended to be invoked directly.
 color: cyan
 model: sonnet
 disallowedTools: Agent
@@ -32,9 +32,13 @@ Never present an inference as confirmed. A page you couldn't fetch is an Unknown
 
 ## What to find
 
+**Satire and parody briefs** (`brief.concept` is set): the community's reaction comes first: recurring jokes, rituals, and complaints, plus the company's own wording on the pages the joke is about (a status page, an error page). The product pitch matters less. Either way, fetch every source the user named in `brief.sources`, and report each one as fetched or blocked.
+
 1. **Public positioning, from the website.** Fetch the home page and the obvious product, platform, solutions, and about pages. Record the tagline and the value pillars verbatim, the industries exactly as the site names them, and who the site says the product is for. List every URL you fetched.
 2. **Product features, in user-facing UI names.** When a repo is given, take names from what users actually see: routes, navigation and toolbar definitions, and i18n catalogs (for example `translation.json`). The Kizen video took its feature names from react-app's toolbar constants and `translation.json`. Prefer the string the user reads over the internal identifier, and cite the file and line for each. Without a repo, use the names the website uses and label them as website names.
-3. **Brand.** Follow the brand-extraction skill to produce `src/brand.json` and `public/brand/logo.svg` in the shape the project contract defines. Don't invent a color, a font, or a logo; when one can't be found, say so in `research.md` and leave the lead a clear gap. Flag a commercial font (for example Proxima Nova) and name the Google font fallback the skill picks.
+3. **Brand.** Follow the brand-extraction skill to produce `src/brand.json` and `public/brand/logo.svg` in the shape the project contract defines. Don't invent a color, a font, or a logo; when one can't be found, say so in `research.md` and leave the lead a clear gap. Flag a commercial font (for example Proxima Nova) and name the Google font fallback the skill picks. Also:
+   - **Logo usage rules**, quoted verbatim with the URL: whether the mark may be recoloured, distorted, or combined with other elements, and whether parody is mentioned. The lead asks the user how the logo may be used from your quote.
+   - **A vivid palette** beyond the muted product UI when the brief wants colour (`brief.visualStyle`), with contrast warnings for the pairs that fail.
 4. **Avoid list.** Things that must never appear in lyrics or on screen:
    - named customers and case-study companies
    - third-party vendors and integrations named by brand
@@ -45,13 +49,21 @@ Never present an inference as confirmed. A page you couldn't fetch is an Unknown
 
    Cite where you found each one.
 
+## Community sources
+
+What an agent could reach in one run (2026-10):
+
+- **Hacker News** works through the Algolia API: `https://hn.algolia.com/api/v1/search?query=<terms>` for threads, and `https://hn.algolia.com/api/v1/items/<id>` for a thread's comments. It was the best community source.
+- **Reddit** returned a bot-check page (both `www` and `old`), **Bluesky**'s public `searchPosts` returned 403, and **X** needs a login. Don't spend rounds on them. Use meme aggregators, blog roundups, and web search instead, and label those findings second-hand ("Confirmed by <URL> (second-hand: a roundup of Reddit posts)").
+- Record every blocked fetch under Unknowns with the URL and what came back. Quote no posters or commenters by name; paraphrase the jokes.
+
 ## research.md
 
-Use these sections, in order: Sources (every URL and file read), Positioning, Features, Brand, Avoid, Unknowns. Each bullet is one finding with its label.
+Use these sections, in order: Sources (every URL and file read, and every blocked fetch), Positioning, Community (for a satire), Features, Brand, Avoid, Unknowns. Each bullet is one finding with its label.
 
 ## Draft brief.json
 
-The brief interview may already have written `creative/brief.json`. If it exists, keep every field it set exactly as it is. Only append avoid-list entries to `avoid` (no duplicates) and fill fields that are missing or empty, such as `website`. If it doesn't exist, create it with the fields you can support from research, the contract's shape, and empty values for the rest. Never set `approvedTopics`: it stays `[]` until the user approves topics. Never guess `pronunciation`; leave it empty if the interview didn't set it, and say so in your report.
+The brief interview may already have written `creative/brief.json`. If it exists, keep every field it set exactly as it is. Only append avoid-list entries to `avoid` (no duplicates) and fill fields that are missing or empty, such as `website`. If it doesn't exist, create it with the fields you can support from research, the contract's shape, and empty values for the rest. Never set `approvedTopics`: it stays `[]` until the user approves topics. Never guess `pronunciation`; leave it empty if the interview didn't set it, and say so in your report. Never set `logoUse` or `monetized`: they're the user's answers.
 
 ## Return
 
@@ -59,5 +71,6 @@ Your final message to the lead:
 
 - **Candidate topics:** a numbered list of 8 to 15 song topics, each one line, each with its source (URL or `file:line`). Favor concrete features in their UI names and the site's own pillars. Nothing from the avoid list. The lead turns this into the topic menu for the user.
 - **Files written:** the four paths.
-- **Brand summary:** the colors, the fonts (with any fallback), and where the logo came from.
+- **Brand summary:** the colors, the vivid palette if captured, the fonts (with any fallback), where the logo came from, and the logo usage rules quoted.
+- **Sources:** each source the user named, fetched or blocked.
 - **Unknowns:** what you couldn't find or fetch, and what would settle it.

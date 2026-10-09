@@ -17,7 +17,14 @@ export type BeatPulseProps = {
   style?: CSSProperties;
 };
 
-/** Scales its children with the beat: a kick on every beat (bigger on downbeats) that decays by the next. */
+/**
+ * Scales its children with the beat: a kick on every beat (bigger on downbeats) that decays by the next.
+ *
+ * Rhythmic pulsing suits tracks with heavy, regular beats (dance, electro, a
+ * four-on-the-floor kick). On a ballad or anything soft it reads as weird: there,
+ * drive slow background movement with useEnergySwell (src/components/motion) and
+ * keep to one-off accents on real musical events. Never wrap lyrics in it.
+ */
 export const BeatPulse = ({children, strength = 0.06, downbeatBoost = 1.8, power = 3, fill = false, style}: BeatPulseProps) => {
   const beat = useBeat();
   const kick = beat.beatIndex < 0 ? 0 : beatKick(beat.phase, power) * (beat.beatInBar === 0 ? downbeatBoost : 1);

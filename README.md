@@ -204,7 +204,14 @@ Makes a kinetic-typography music video about any company. It researches the comp
 company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction → video
 ```
 
-You approve each step that matters: the brief, the topics, the lyrics, and the creative direction.
+You approve each step that matters: the brief, the topics, the lyrics, and the creative direction. Satire and parody are fine, and it asks how the company's logo may be used and whether you'll monetize the video.
+
+Version 0.2.0 adds:
+
+- **A concept round.** Before the full build, the director can pitch three different looks, each with a contact sheet of the same key lyric moments and a short motion test, so you pick from moving pictures rather than a written direction.
+- **`pnpm render --composition=<id>`** renders any registered composition (such as a concept) with the audio kept in sync; `pnpm still` takes the same flag.
+- **`pnpm jitter`** measures shimmer on held text, so "the lyrics are still" is a number rather than a guess.
+- **An optional motion kit** in the template (`src/components/motion/`): settled springs, masked word reveals, a soft text scrim, grain, energy swells, circle floods, and log-space zoom.
 
 ### Install
 

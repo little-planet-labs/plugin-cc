@@ -1,0 +1,46 @@
+{
+  "$comment": "Test fixture: a copy of the template's placeholder src/brand.json, so the parseBrand tests don't depend on the project's real brand. Not used by the video.",
+  "name": "Example Company",
+  "colors": {
+    "background": "#14161F",
+    "surface": "#20232F",
+    "primary": "#3B4CCA",
+    "primaryDeep": "#262F80",
+    "accent": "#F2B134",
+    "accentAlt": "#E85D75",
+    "text": "#FFFFFF",
+    "textMuted": "#B8BCCB",
+    "neutral": {
+      "50": "#F5F6F8",
+      "100": "#E9EBF0",
+      "300": "#C3C7D3",
+      "500": "#868B9C",
+      "700": "#4A4F60",
+      "900": "#1C1F28"
+    }
+  },
+  "fonts": {
+    "display": {
+      "family": "Inter",
+      "source": "google",
+      "weights": [
+        300,
+        400,
+        600,
+        700,
+        800
+      ]
+    },
+    "body": {
+      "family": "Inter",
+      "source": "google",
+      "weights": [
+        400,
+        600
+      ]
+    }
+  },
+  "logo": {
+    "path": "public/brand/logo.svg"
+  }
+}
