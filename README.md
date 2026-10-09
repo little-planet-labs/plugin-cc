@@ -68,6 +68,19 @@ The overseer replaces the default Claude Code system prompt for that session. To
 
 The overseer keeps a small ledger of its working state in the session scratchpad: the agents it has running, review rounds, and Linear state. The plugin's SessionStart hook tells the overseer where the ledger is and puts it back into context after compaction or when you resume a session, so auto-compaction doesn't make it lose track of that work. Turn on auto-compact in `/config` for long runs, such as working through a Linear board overnight. The hook needs Node.js, and does nothing if `node` isn't on your PATH.
 
+### Status mod
+
+In an overseer session the plugin also loads a mod that shows the factory's state inside Claude Code. The mod needs Claude Code 2.1.287 or later, where mods are on by default. Versions without mod support ignore it, and the rest of the plugin keeps working.
+
+- **Band above the prompt.** A card with colored gauges for context and the 5-hour and 7-day rate limits (green, yellow, red as they fill, with the 5-hour reset countdown), a chip per agent with a status dot (running first; identical agents share a chip with `×N`; descriptions share the width and are cut in the middle when they must be; the rest fold into `+N`), the ledger's next step, and the open question count. Press `1` at an empty prompt to open `/factory` (below 26 columns the band leaves the button out, so use `/factory` there). On a narrow or short terminal it drops the 7-day gauge, then the chips, down to one line. Other mods' rows in the band stay under it.
+- **Agent rows.** A summary card above each Agent row in the transcript: status dot, agent type, description, model, and elapsed time. The row itself, with its progress, detail, and token count, stays under the card. Other tool rows are unchanged.
+- **Spinner.** While agents run, the spinner adds how many are running and the next step.
+- **Toasts.** One when an agent finishes or fails (with its elapsed time and tokens), and one when the 5-hour or 7-day limit passes 80%, again only after it drops below 70% or the window resets.
+- **`/factory`.** Opens a pane with usage gauges (context, tokens left before auto-compaction, the 5-hour and 7-day rate limits, and session cost), the agent tree from the overseer down through managers to workers (each with its status, model, elapsed time, and tokens, counted as Claude Code counts an agent's tokens), and a summary of the ledger: its status, next step, open questions, units by state, background work, and each manager ledger's next step.
+- **Compaction reminder.** When context reaches 90% of the auto-compaction threshold, or 75% of the window when the threshold isn't known, it tells the overseer once to bring its ledger up to date. It reminds it again after the next compaction.
+
+The mod only reads the ledgers in the session scratchpad and never writes a file. In any other session it shows nothing and adds nothing to the model's context.
+
 ### The agents
 
 **Overseer** (`little-planet-factory:overseer`) is the controller. It scopes the work, breaks it into units that don't touch the same files, and hands them to workers and managers, in parallel only when they don't build together: units where either's build compiles the other's files in one working tree run one after another, and one that stops unfinished holds the rest up until it's done or you decide. It doesn't write code unless you tell it to. It launches agents in the background so you can keep talking to it while they run: ask questions, add work, or redirect an agent mid-task. It owns final quality. Work isn't done until every unit has reported back, it has read every diff, verification passes, every required inspection has come back clean, and it has cleaned up the build output agents reported.
@@ -98,7 +111,7 @@ Only the environment variable sets the tier. Without it, or with any other value
 
 In lite, managers stay on opus, and the overseer runs on whatever model you start it with, as usual. Workers, inspectors, researchers, signoff, and Claude Code's built-in agent types all run on sonnet. Leads never quietly bump a unit to opus. Foundational units and inspection triggers run on sonnet with their usual gates. Only when a unit hits the three-round limit does the overseer ask you whether to keep it on sonnet or run that one unit at full tier, and it moves to opus only if you say yes. Because the inspector is on sonnet, every lite inspection asks for the [Codex](#optional-integrations) second review, repair rounds included, when Codex is set up. Every other gate stays the same.
 
-The SessionStart hook tells the overseer the session is lite, and a hook on agent spawns denies a worker, inspector, researcher, signoff, or built-in agent that isn't on sonnet, unless it's marked as a unit you approved for full tier. Manager spawns pass through and keep their opus pin. Forks are always denied in lite, since a fork runs on its caller's model whatever model the call asks for. The spawn hook only acts when the caller is a factory lead, the overseer session or a manager, so a plain Claude Code session or any other agent with `LPF_TIER=lite` set is left alone. Claude Code runs plugin hooks inside subagents too, so the spawn hook also covers the spawns managers make, and the managers' own instructions carry the same rule. Like the ledger hook, the spawn hook needs `node` on your PATH. Without it, or if `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` keeps `LPF_TIER` from reaching the hooks, only the agents' instructions keep the session lite.
+The SessionStart hook tells the overseer the session is lite, and a hook on agent spawns denies a worker, inspector, researcher, signoff, or built-in agent that isn't on sonnet, unless it's marked as a unit you approved for full tier. Manager spawns pass through and keep their opus pin. Forks are always denied in lite, since a fork runs on its caller's model whatever model the call asks for. The spawn hook only acts when the caller is a factory lead, the overseer session or a manager, so a plain Claude Code session or any other agent with `LPF_TIER=lite` set is left alone. Claude Code runs plugin hooks inside subagents too, so the spawn hook also covers the spawns managers make, and the managers' own instructions carry the same rule. Both hooks need `node` on your PATH. The tier comes from the SessionStart hook, so without `node`, or if `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` keeps `LPF_TIER` from reaching the hooks, the overseer isn't told the session is lite and the whole session runs at full tier.
 
 ### When inspection runs
 
@@ -242,7 +255,10 @@ plugins/little-planet-factory/
   skills/linear/                           Linear project workflows, loaded on demand
   skills/codex-review/                     optional Codex second review, preloaded into the inspector
   hooks/                                   SessionStart hook that points the overseer to its ledger and re-injects it (factory-ledger),
-                                           and PreToolUse hook that keeps lite-tier spawns on sonnet (lite-tier.mjs, lite-tier.sh)
+                                           PreToolUse hook that keeps lite-tier spawns on sonnet (lite-tier.mjs, lite-tier.sh),
+                                           and the status mod (register.ts, with its code in mod/)
+  types/index.d.ts                         the status mod's session state types
+  tests/                                   status mod tests, run with claude plugin test
 plugins/music-video/
   .claude-plugin/plugin.json               plugin manifest
   agents/                                  company-researcher, lyricist, video-director
@@ -270,6 +286,12 @@ Run the hook tests (needs Node.js):
 ```
 sh tests/factory-ledger-hook.test.sh
 sh tests/lite-tier-hook.test.sh
+```
+
+Run the status mod tests (needs Claude Code 2.1.287 or later, the first version with mods on by default). They live in `plugins/little-planet-factory/tests/`, because `claude plugin test` only runs tests inside the plugin folder, so they ship with the plugin:
+
+```
+claude plugin test plugins/little-planet-factory
 ```
 
 Check the music-video template in a copy, never inside the plugin folder, so no `node_modules` lands in the plugin:

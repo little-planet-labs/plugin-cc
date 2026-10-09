@@ -1,5 +1,5 @@
 {
-  "description": "Tells the overseer where its factory ledger lives, re-injects the ledger after compaction or resume, and in the lite tier (LPF_TIER=lite) announces the tier and denies agent spawns that aren't on sonnet.",
+  "description": "Tells the overseer where its factory ledger lives, re-injects the ledger after compaction or resume, and in the lite tier (LPF_TIER=lite) announces the tier and denies agent spawns that aren't on sonnet. The status mod (register.ts) shows factory status in a band above the prompt, Agent rows, the spinner, toasts and /factory, and reminds the overseer to update its ledger before auto-compaction.",
   "hooks": {
     "SessionStart": [
       {
@@ -24,5 +24,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./register.ts"
+  ]
 }
