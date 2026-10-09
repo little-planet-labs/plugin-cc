@@ -1,0 +1,9 @@
+{
+  "compositionId": "MusicVideo",
+  "outputName": "music-video",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "fallbackSeconds": 60,
+  "audioCandidates": ["audio/track.wav", "audio/track.mp3"]
+}

@@ -15,6 +15,16 @@
         "name": "Little Planet Labs"
       },
       "source": "./plugins/little-planet-factory"
+    },
+    {
+      "name": "music-video",
+      "displayName": "Music Video",
+      "description": "Make a beat-synced kinetic-typography music video about any company: researched topics, lyrics and a Suno prompt, then a Remotion video with its own look.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Little Planet Labs"
+      },
+      "source": "./plugins/music-video"
     }
   ]
 }

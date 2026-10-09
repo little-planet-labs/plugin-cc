@@ -1,0 +1,9 @@
+{
+  "name": "music-video",
+  "displayName": "Music Video",
+  "version": "0.1.0",
+  "description": "Make a beat-synced kinetic-typography music video about any company: researched topics, lyrics and a Suno prompt, then a Remotion video with its own look.",
+  "author": {
+    "name": "Little Planet Labs"
+  }
+}

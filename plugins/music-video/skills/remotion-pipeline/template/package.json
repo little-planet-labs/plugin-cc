@@ -1,0 +1,48 @@
+{
+  "name": "music-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Beat-synced kinetic-typography music video, built with Remotion.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "setup:audio": "python3 -m venv .venv && .venv/bin/python -m pip install --disable-pip-version-check -q -r scripts/requirements.txt",
+    "setup:align": "node scripts/setup-align.mjs",
+    "analyze": "node scripts/analyze.mjs",
+    "analyze:reset": "node scripts/analyze.mjs --reset",
+    "align": "node scripts/align.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\" \"tests/**/*.test.tsx\"",
+    "still": "node scripts/still.mjs",
+    "render": "node scripts/render.mjs",
+    "preview": "node scripts/preview.mjs",
+    "contact-sheet": "node scripts/contact-sheet.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.527",
+    "@remotion/google-fonts": "4.0.527",
+    "@remotion/paths": "4.0.527",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.527"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.527",
+    "@remotion/player": "4.0.527",
+    "@types/node": "24.13.6",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.5",
+    "tsx": "4.23.15",
+    "typescript": "5.7.3"
+  },
+  "packageManager": "pnpm@10.33.4",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

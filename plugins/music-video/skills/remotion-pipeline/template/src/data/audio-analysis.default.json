@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "source": null,
+  "generator": "default (no track analyzed)",
+  "fps": 30,
+  "durationSeconds": 60,
+  "durationInFrames": 1800,
+  "tempo": 120,
+  "beatsPerBar": 4,
+  "beats": [],
+  "downbeats": [],
+  "onsets": [],
+  "bands": {"low": [20, 250], "mid": [250, 4000], "high": [4000, 11025]},
+  "energy": {"low": [], "mid": [], "high": []}
+}

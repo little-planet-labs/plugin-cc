@@ -7,6 +7,7 @@ A [Claude Code](https://code.claude.com) plugin marketplace from Little Planet L
 | Plugin | What it does |
 |---|---|
 | [Little Planet Factory](#little-planet-factory) | A team of agents that plans, delegates, implements, and inspects multi-part work |
+| [Music Video](#music-video) | Turns a company into a song and a beat-synced music video about it |
 
 ## Install
 
@@ -182,6 +183,46 @@ The agents use two MCP servers, Cadence and Telescope, and one Claude Code plugi
 
 Agents detect Cadence and Telescope by their tool names, so it doesn't matter what name you gave the server when you connected it.
 
+## Music Video
+
+Makes a kinetic-typography music video about any company. It researches the company, offers you a menu of song topics, writes lyrics and a Suno prompt, and, once you've made the song in Suno, builds a beat-synced Remotion video with its own look. No two videos share a visual style.
+
+```
+company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction → video
+```
+
+You approve each step that matters: the brief, the topics, the lyrics, and the creative direction.
+
+### Install
+
+```
+/plugin marketplace add Little-Planet-Labs/plugin-cc
+/plugin install music-video@little-planet-labs-cc
+```
+
+### Start
+
+Invoke the `music-video` skill:
+
+```
+/music-video:music-video
+```
+
+It interviews you about the company first, including how its name is pronounced.
+
+### What it gives you for Suno
+
+Suno gets two things from the plugin: the lyrics and a style description. You generate the song in Suno yourself, then hand the audio file back.
+
+### Requirements
+
+- Node.js 22.18 or newer, and pnpm
+- ffmpeg
+- Python 3.12 or newer
+- A Suno account
+
+The first alignment run downloads about 1.4 GB of models into the project.
+
 ## Repository layout
 
 ```
@@ -202,6 +243,15 @@ plugins/little-planet-factory/
   skills/codex-review/                     optional Codex second review, preloaded into the inspector
   hooks/                                   SessionStart hook that points the overseer to its ledger and re-injects it (factory-ledger),
                                            and PreToolUse hook that keeps lite-tier spawns on sonnet (lite-tier.mjs, lite-tier.sh)
+plugins/music-video/
+  .claude-plugin/plugin.json               plugin manifest
+  agents/                                  company-researcher, lyricist, video-director
+  skills/music-video/                      the playbook you invoke, with its user checkpoints
+  skills/suno-songwriting/                 lyrics package and Suno prompt format
+  skills/brand-extraction/                 brand colors, fonts, and logo into src/brand.json
+  skills/scene-authoring/                  creative direction and scene-building craft
+  skills/remotion-pipeline/                analysis, alignment, and render pipeline
+  skills/remotion-pipeline/template/       the Remotion project each video starts from
 tests/                                     tests for the ledger and lite-tier hooks, not shipped with the plugin
 ```
 
@@ -212,6 +262,7 @@ Validate after editing:
 ```
 claude plugin validate .
 claude plugin validate plugins/little-planet-factory
+claude plugin validate plugins/music-video
 ```
 
 Run the hook tests (needs Node.js):
@@ -219,6 +270,16 @@ Run the hook tests (needs Node.js):
 ```
 sh tests/factory-ledger-hook.test.sh
 sh tests/lite-tier-hook.test.sh
+```
+
+Check the music-video template in a copy, never inside the plugin folder, so no `node_modules` lands in the plugin:
+
+```
+cp -R plugins/music-video/skills/remotion-pipeline/template /tmp/mv-template-check
+cd /tmp/mv-template-check
+pnpm install
+pnpm typecheck
+pnpm test
 ```
 
 Test locally from a clone:
