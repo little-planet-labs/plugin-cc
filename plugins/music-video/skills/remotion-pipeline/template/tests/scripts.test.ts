@@ -137,6 +137,20 @@ describe('parseRenderArgs', () => {
     assert.throws(() => parseRenderArgs(['--out', '--frames=1']), /--out needs a path/);
     assert.throws(() => parseRenderArgs(['--out=x.mov']), /must end in \.mp4/);
   });
+  it('parseRenderArgs passes --props=<json> through untouched (the text-only render)', () => {
+    // `pnpm render --props='{"textOnly":true}' --out out/text-only.mp4`: the shell strips the quotes.
+    const props = '--props={"textOnly":true}';
+    assert.deepEqual(parseRenderArgs([props, '--out', 'out/text-only.mp4'], {root: '/r'}), {
+      composition: null,
+      output: '/r/out/text-only.mp4',
+      passthrough: [props],
+    });
+    // JSON with '=' and spaces inside stays one argument, byte for byte.
+    const tricky = '--props={"a":"x=y z","textOnly":true}';
+    assert.deepEqual(parseRenderArgs(['--frames=0-9', tricky, '--out=out/t.mp4'], {root: '/r'}).passthrough, ['--frames=0-9', tricky]);
+    // Without --out the text-only render would replace the main video.
+    assert.equal(parseRenderArgs([props], {root: projectRoot}).output, join(projectRoot, 'out/music-video.mp4'));
+  });
 });
 
 describe('render cleanup', () => {

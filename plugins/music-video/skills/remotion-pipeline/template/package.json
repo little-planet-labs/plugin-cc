@@ -18,9 +18,13 @@
     "test": "node --import tsx --test \"tests/**/*.test.ts\" \"tests/**/*.test.tsx\"",
     "still": "node scripts/still.mjs",
     "render": "node scripts/render.mjs",
+    "draft": "node scripts/draft.mjs",
     "preview": "node scripts/preview.mjs",
     "contact-sheet": "node scripts/contact-sheet.mjs",
-    "jitter": "node scripts/jitter.mjs"
+    "jitter": "node scripts/jitter.mjs",
+    "critique": "node scripts/critique.mjs",
+    "pops": "node scripts/pops.mjs",
+    "beatmap": "node scripts/beatmap.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.527",

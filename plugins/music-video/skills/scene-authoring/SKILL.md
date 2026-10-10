@@ -1,6 +1,6 @@
 ---
 name: scene-authoring
-description: How the music-video director designs and builds a video's scenes so no two videos look alike. Covers creative/direction.md first (a visual language drawn from the brand, the song, and the company, checked against past directions and approved by the user), the optional concept round (three concepts as separate compositions, each with a contact sheet of the same key moments and a motion test), the timing contract (absolute song frames, beats by rounded frame, downbeat hits, the active lyric matching the sung line, instrumentals without text), variety across shots, motion, transitions, springs and easings, beat pulsing only where the genre fits, pixel-still held text, typography defects, legibility, safe areas, on-screen copy, determinism and React rules, the one-shot build, and the self-check loop (stills, a transition sweep, jitter), with known pitfalls. Use when writing direction.md, concepts.md, or anything under src/scenes/ or src/concepts/.
+description: How the music-video director designs and builds a video's scenes so no two videos look alike. Covers creative/direction.md (one unifying visual system, varied inside it, never a new world per line) and the per-line beat map (creative/beatmap.md) before code, the optional concept round, the timing contract, text-led transitions (lyrics on their own layer with designed exits, world-only reveals underneath, hard cuts only on the biggest hits), the 0.5 s hook and 4 s change rules, motion, springs and easings, beat pulsing only where the genre fits or the brief asks, pixel-still held text, typography defects, phone legibility, safe areas, on-screen copy, determinism and React rules, the one-shot build, and the self-check on half-res drafts (critique sheets, pops, jitter) that feeds the critic loop, with known pitfalls. Use when writing direction.md, beatmap.md, concepts.md, or anything under src/scenes/ or src/concepts/.
 user-invocable: false
 ---
 
@@ -10,7 +10,7 @@ The pipeline is shared; the look is not. Every video gets its own visual languag
 
 ## 1. Direction first: creative/direction.md
 
-Write no scene code until the user has approved `direction.md`.
+Write no scene code until the user has approved `direction.md`. Write the beat map (`creative/beatmap.md`, below) in the same pass, so the direction's ideas are pinned to frames before anything is built.
 
 ### Check what's been done
 
@@ -42,36 +42,60 @@ Pull from three inputs and say in the doc how each one shaped the result:
 
 Mix and invent. A direction is good when you can describe a still from it in one sentence and nobody would mistake it for the last video.
 
-### Variety: one direction, many ideas
+### One unifying system, varied inside it
 
-A direction is a language, not a single image. One visual system held for a whole song wears out: a full-bleed grid wall that carried every section of a 4.5-minute ballad was rejected as dated and repetitive.
+This is a rule for every video. The direction defines **one unifying visual system**, a through-line that holds the whole video together:
 
-- Give each section, and often each line, its own layout and visual idea inside the direction.
-- Save a recurring motif for the lyric that calls for it. The grid that failed as a wall worked as one shot, on the line about the grid itself.
-- Inside one shot: one accent colour, and one hero element moving at a time.
-- Across shots: vary the system (type-only, prop, UI, illustration) and the palette.
+- **a world** (where everything happens: a keynote stage, a paper desk, a terminal, a 3D city)
+- **a material** (glass, paper, ink, chrome, flat colour)
+- **a type system** (families, weights, case, how hits scale)
+- **a palette logic** (which colour means what, and how it shifts as the song turns)
+- **a motion language** (the 4 to 6 moves, and the transitions)
+
+**Variety comes from transformations and staging inside that system:** new compositions, props, and camera moves, the system building and mutating as the song goes, a motif saved for the lyric that calls for it. How much it varies, and how often (per line or per section), is set by the direction. It never comes from swapping to an unrelated world. A video built as a new world per lyric line felt disconnected; a video that kept one visual system throughout and varied inside it felt connected (see `examples/github.md`).
+
+Don't hold one static look for minutes, either: a single grid wall repainted for a whole song was rejected as dated and samey. Vary inside the system, as often as the direction sets, and the 4 s change rule (under "Pacing") holds whatever it sets.
+
+This adopts the howseen-ai/claude-motion-design rule of one visual system from start to end, with transformations rather than cuts between unrelated looks. Its "one accent colour" part doesn't carry over: the palette is the brief's and the direction's call.
 
 ### What direction.md contains
 
 1. **Summary**: three sentences a user can approve.
 2. **Differs from**: the past directions and the dimensions this one changes.
-3. **Visual language**: typography (families from brand.json, weights, case, tracking, how big hits get), motion vocabulary (the 4 to 6 moves this video uses, and the ones it never uses), colour treatment within the brand (which colour means what, how "before" and "after" differ if the song has a turn), camera feel, texture or medium, transitions between sections, and how humour lands visually (a sight gag on the punchline word, a stop-time freeze, a deadpan hold).
+3. **Visual language**: the unifying system (world, material, type system, palette logic, motion language) and how lines and sections vary inside it, the mascot or hero-graphic treatment when there is one, typography (families from brand.json, weights, case, tracking, how big hits get), motion vocabulary (the 4 to 6 moves this video uses, and the ones it never uses), colour treatment within the brand (which colour means what, how "before" and "after" differ if the song has a turn), camera feel, texture or medium, transitions between sections, and how humour lands visually (a sight gag on the punchline word, a stop-time freeze, a deadpan hold).
 4. **Section plan**: one row per section in `src/data/sections.json` (instrumentals included), with its time range, energy, and concept: what's on screen, the hits it lands, and how it hands off to the next section.
 5. **Alternates**: two contrasting directions in one line each, so the user can redirect without a new round.
 
-The lead shows the user the summary and the alternates. ★ The user approves, redirects, or asks for a concept round.
+The lead shows the user the summary and the alternates. ★ The user approves, redirects, or asks for a concept round. When the user redirects, revise `beatmap.md` with `direction.md`; after a concept pick, rewrite it for the chosen concept before extending it to the whole song.
+
+### The beat map: creative/beatmap.md
+
+The section plan says what each section is about. The beat map says what happens on every line, at which frame. Start it from the skeleton, then fill it in:
+
+```sh
+pnpm beatmap          # writes creative/beatmap.md; --force overwrites an existing one
+```
+
+The skeleton has the tempo and bars, candidate drops and accents from band-energy jumps, one row per lyric line with its frames and empty columns, and the layer list. Fill in:
+
+- **Every line's row:** the world (what's on screen behind the text), the transition in, the text exit and its direction, and a one-off musical accent at a measured frame (a word, a drum fill, a stop-time hit). The exit direction matches the world transition that follows it (see "Text-led transitions").
+- **The hard cuts**, each on a stop-time hit, a chorus downbeat, or the key change, with the frame.
+- **The drops**, confirmed from the band-energy candidates, not guessed from the lyric tags, and **the key change**, which band energy can't show: mark it from the song itself and the lyric tags.
+- **The layer list:** world → fx → lyric layer → overlays, and what lives in each.
+
+The critic checks the build against this file, so keep it current when you change a line's treatment.
 
 ### Concept round (when the lead asks for one)
 
 Users judge motion, not paragraphs. A concept round shows three looks moving before one gets built in full.
 
-1. **Pitch three really different concepts** in `creative/concepts.md`: for each, a pitch, typography, colour, motion, transitions, overlays, a line per section, and the cost and risk. End with a recommendation. Three variations of one idea isn't a round.
-2. **Pick the moments once.** List about 10 key lyric moments (the intro, the first line, the hook downbeat, a big joke, the bridge, the key change) with their absolute frames, in a table at the top of `concepts.md`. Every concept renders the **same** frames, so the sheets compare like for like.
+1. **Pitch three really different unifying systems** in `creative/concepts.md`: for each, a pitch, its world, material, typography, palette logic, motion, transitions, overlays, a line per section saying how the system varies there, and the cost and risk. End with a recommendation. Three variations of one system isn't a round, and neither is one concept that changes world every line.
+2. **Pick the moments once.** List about 10 key lyric moments (the intro, the first line, the hook downbeat, a big joke, the bridge, the key change) with their absolute frames, in a table at the top of `concepts.md`. Every concept renders the **same** frames, so the sheets compare like for like, and each sheet shows its system varying across those moments while staying one piece.
 3. **Build each concept as its own composition** under `src/concepts/<slug>/`, registered in `src/Root.tsx` with its own id. Shared concept code goes in `src/components/<kit-name>/`. Don't touch `src/scenes/` or the main composition, so an approved build stays intact.
 4. **Render, per concept:**
    - a contact sheet of those moments (stills with `pnpm still --composition=<id> --frame=<n>`, tiled)
    - a 10 to 14 s motion test of the pre-chorus into chorus 1, with `pnpm render --composition=<id> --frames=<a>-<b>`. Stills can't show transitions or motion, and the pre-chorus into the hook has both.
-5. **Self-check the sheets and the clips** as in section 5 before reporting.
+5. **Self-check the sheets and the clips** before reporting: look at every sheet, and run `pnpm critique --in <clip> --tag <slug> --strips=<s,…>` and `pnpm pops --in <clip> --fail` on each motion test (section 5). A `--frames=<a>-<b>` clip starts at frame 0, but critique's default strips are song-time lyric and section starts, so pass `--strips` in clip-relative seconds: song seconds − `a`/fps. The same goes for `pops --cuts`: clip frames, song frame − `a`.
 
 After the user picks, extend the chosen concept to the whole song in its own composition and render it with `pnpm render --composition=<id>` (it writes `out/<id>.mp4`). When the user dislikes one element of it, pitch 2 or 3 treatments of just that element as an options sheet, in context, with a short clip of each, and re-render only after they pick.
 
@@ -88,10 +112,12 @@ After the user picks, extend the chosen concept to the whole song in its own com
 
 ## 3. Craft
 
-### Legibility at 1080p
+### Legibility at 1080p and on a phone
 
-- Body lyrics at least 72 px, normally 84 px. Hits 160 to 300 px. The preview is 720p, which shrinks everything by a third.
-- Text contrast with whatever is behind it at that frame, not with the scene's base colour: check it over glows, particles, and flashes.
+Most people watch on a phone, so design for a 360 px-wide frame and check it on the `phone_NN.png` critique tiles. The critic scores readability there.
+
+- **Cap height at least 4.5% of the frame height**: about 49 px at 1080p. Body lyrics at least 72 px, normally 84 px, which clears it in most faces; check the cap height of a light or condensed face rather than trusting its font size. Hits 160 to 300 px. The preview is 720p, which shrinks everything by a third.
+- **Contrast at least 4.5:1** between the glyphs and whatever is behind them within 12 to 20 px of their edges (a dilation of the glyphs), at that frame, not with the scene's base colour: check it over glows, particles, gradients, and flashes.
 - A lyric word stays readable for at least 12 frames once it's in. Each lyric stays on screen at least 0.7 s, and text reveals no faster than about 17 characters per second.
 - Props that carry a joke are at least 200 px on their long side. A gag nobody can see is a missing gag.
 
@@ -110,36 +136,77 @@ These defects all shipped in one run's renders and were caught late:
 Once a lyric has landed, it doesn't move by a pixel until it exits. Sub-pixel shimmer on held type looks like a cheap encode, and viewers notice it on a ballad more than anywhere. The causes found in one run:
 
 - **Springs that never settle.** Remotion's `spring` approaches 1 and never reaches it, so the text keeps drifting by fractions of a pixel. Use `springSettled` from the motion kit, or clamp to exactly 1 once the motion is done.
-- **Lyrics inside camera, beat-punch, or drift wrappers.** Anything that scales or moves the scene moves the text with it.
+- **Lyrics inside camera, beat-punch, drift, or transition wrappers.** Anything that scales or moves the scene moves the text with it. In one build, whips blurred and slid the held lyric with the frame, zooms scaled and blurred it, and an iris covered it while it was still held.
 - **Re-seeded grain drawn above the text.** Grain that changes every frame and sits over the type makes it crawl.
 
-The layer order is: background, then grain and vignette, then the lyric text in a layer with no punch, drift, or camera scale. Text may still make deliberate moves: its entrance, a hit, its exit. Measure it with `pnpm jitter` (section 5). It passes when the printed summary's mean shift is 0.01 px or less.
+The layer order is: world, then fx, then the lyrics, then overlays. World and fx both go inside `WorldLayer`: the shots, the camera scale, `ShotTimeline`, `SubframeBlur`, `Shatter`, `CircleFlood`, and, as its top children, grain, vignette, and energy swells. The lyric (`MaskedWords`) goes in `LyricLayer`, rendered as a sibling after `WorldLayer`, never inside it, so nothing in the world reaches the text. Overlays (anything that must sit above the text) are rare: keep them static or one-off, never re-seeded grain, and return `null` from them when `useTextOnly()` is true. In the text-only render (`pnpm render --props='{"textOnly":true}' --out out/text-only.mp4`, input prop `textOnly: true`), `WorldLayer` draws opaque black instead of its children by itself and `LyricLayer` draws as usual, which is what `pnpm jitter --all-lines` measures. Text may still make deliberate moves: its entrance, a hit, its exit. Measure it with `pnpm jitter` (section 5). It passes when the mean shift is 0.01 px or less.
+
+### Pacing: the hook and the 4 s rule
+
+These are process rules for every video, whatever its look:
+
+- **Hook by 0.5 s.** A subject and motion on screen by frame 15 (at 30 fps), even over a piano or ambient intro. Instrumentals still get no invented text; the hook is a picture that moves.
+- **A visible change at least every 4 s**, carried by composition and musical events inside the unifying system: a new composition, a camera move, a world transition, a prop arriving, an accent on a real hit. Never by a rhythmic throb.
+- **Nothing still for more than about 1 s**, except held lyric text, which must be pixel-still. Slow world drift, an incoming shot that's already moving (`useShotCamera`), or an energy swell keeps a shot alive without touching the text.
+- **Dead stretches count.** In one run a critic flagged a 14 s intro and a 30 s outro with nothing happening. A long instrumental gets its own sequence of changes in the beat map.
+
+### Text-led transitions
+
+The lyric drives the cut, and the world follows it. This is what made the howseen-ai/claude-motion-design run's transitions read as designed: each line left with its own exit, on schedule, and then a world-only reveal ran underneath, often in the direction the words had left, with the next line riding above it.
+
+- **Two layers.** Lyrics go on `LyricLayer`; the world goes on `WorldLayer`, and world transitions run only through `ShotTimeline`, a world-only transition player: each shot's `in` transition (`cut`, `wipe` with a blade edge, `diagonal`, staggered `bars`, `iris` with a colour ring, `zoom`, `whip`, `slices`, `split`, or `burn`) runs over the frames before that shot's `from` with both shots live. A world transition never touches the lyric layer.
+- **Every line gets a designed exit.** `MaskedWords` takes an `exit`: `'fade'`, `'up'`, `'down'`, `'left'`, `'right'`, `'scatter'`, `'fall'`, `'blur'`, `'shrink'`, `'cut'`, or `{suckTo: [x, y]}` (a vortex into a point, in px within the line block's own box). The line is gone from E, the earliest of the next line's first word − 2 and `exitBy`; each word's exit (`exitFrames`, default 0.3 s, words `exitStagger` apart, default 0.035 s) ends by E. Set `exitBy` to the frame the world transition reaches the text, so the exit finishes before it. A short hold compresses the exit, and with no room at all it becomes a cut. If a scene changes these from their defaults, pass the matching `--exit-frames`, `--exit-stagger`, `--settle`, or `--stagger` to `pnpm jitter --all-lines`, which times each line's hold window from the defaults.
+- **The exit's direction matches the world transition** that follows it. Starting points, not rules:
+
+  | Text exit | World transition |
+  |---|---|
+  | `left` / `right` | a whip or a bladed wipe the same way |
+  | `up` / `down` / `fall` | a wipe or staggered bars in that direction, or a diagonal |
+  | `{suckTo: [x, y]}` | an iris opening from that point, or a `CircleFlood` with `contractTo` there |
+  | `scatter` | a burn or a split |
+  | `fade` / `blur` / `shrink` | a zoom-through or an iris |
+  | `cut` | a hard cut |
+
+- **Incoming text rides above the reveal.** The next line enters on the lyric layer while the world transition is still running beneath it, and is never clipped by the iris, wipe, or bars.
+- **Never blur or scale held text inside a whip or zoom.** The world whips and zooms; the text has already left, or hasn't arrived. Text blurs only as its own exit (`'blur'`).
+- **Animated transitions last 11 to 15 frames** (0.38 to 0.5 s at 30 fps) and carry the ordinary line changes.
+- **Hard cuts are for the biggest hits:** stop-time hits, chorus downbeats, and the key change. Build into each with a push-in (the howseen run used 1.0 to 1.9) that peaks on the cut frame: cut at peak velocity, not at rest. The howseen run used 7 hard cuts in 262 s; the GitHub build used 1. List them in the beat map and pass their frames to `pnpm pops --cuts` so the scan doesn't flag them.
 
 ### Motion
 
-Modern motion reads as designed, not as "things fading in". The template's optional motion kit (`src/components/motion/`) has the pieces: `springSettled`, `MaskedWords`, `Scrim`, `Grain`, `useEnergySwell`, `CircleFlood`, and `logZoom`. Use what fits the direction.
+Modern motion reads as designed, not as "things fading in". The template's optional motion kit (`src/components/motion/`) has the pieces: `springSettled`, `MaskedWords`, `Scrim`, `Grain`, `useEnergySwell`, `CircleFlood`, `logZoom`, `WorldLayer`, `LyricLayer`, `useTextOnly`, `ShotTimeline`, `useShotCamera`, `SubframeBlur`, and `Shatter`. Use what fits the direction.
 
-- **Transitions with a source.** Zoom-throughs (the camera flies into an element and out into the next shot), circle floods from a source element (`CircleFlood` clears the farthest corner), split panels, whip pans, masks, and shared-element handoffs, where a word or shape carries into the next shot.
+- **Transitions with a source.** Zoom-throughs (the camera flies into an element and out into the next shot), circle floods from a source element, split panels, whip pans, masks, and shared-element handoffs, where a shape carries into the next shot. A word that carries over does it on the lyric layer.
+- **Floods land on the hit.** On a stop-time hit, run a `CircleFlood` with `EASE_OUT` over about 0.3 s from 0.2 s before the hit, so it's mostly full on the hit, not a linear grow. `contractTo: {x, y, at, frames}` shrinks it to nothing at the next shot's hero element, so the eye lands where the next shot starts.
+- **The incoming shot is already moving.** `useShotCamera(from, to, z0 = 1.08)` returns the world camera scale, settling in log space from `z0` at `from` (pass the shot's `start`) to exactly 1 at `to`. Scale a wrapper inside `WorldLayer` with it, never the lyric. Together with a `ShotTimeline` `in` transition, which renders the incoming shot live, the new shot arrives already moving. It's what makes a whip left end in a shot still travelling left.
 - **Matched direction and speed across cuts.** A whip left ends in a shot already moving left at the same speed.
-- **Cut at peak velocity**, not at rest. The cut hides inside the fastest frame.
-- **Seam blur scales with size:** about 10 px for text, 18 to 20 px for a full-frame move.
+- **Motion blur on world transitions only.** `SubframeBlur` gives a 180° shutter to world moves; never on the lyric layer, and never across a hard cut. Seam blur on a full-frame world move is about 18 to 20 px.
+- **Shatter, optionally, on a hit.** `Shatter` breaks world shapes and props apart on a real musical event, such as a hit effect behind the text. It's world-only: it lives in `WorldLayer`, which never holds the lyric and draws black in the text-only render. Lyric exits are only the `MaskedWords` exit kinds. Use it sparingly.
 - **Camera zoom in log space** (`logZoom`): linear scale interpolation looks like it accelerates. Never zoom in and then straight back out.
 - **Easings, never linear** for moves: `Easing.bezier(0.6, 0, 0.2, 1)` for moves between rests, `Easing.bezier(0.2, 0.8, 0.2, 1)` for entrances. Every easing returns exactly 0 and 1 at its ends.
-- **Spring presets** (stiffness / damping, mass 1): snappy 320/30, default 170/26, heavy 120/24, and playful 180/12, which overshoots, so only on gag words.
+- **Spring presets** (stiffness / damping, mass 1): snappy 320/30, default 170/26, heavy 120/24, and playful 180/12, which overshoots, so only on gag word entrances, never while text is held.
 
-These motion ideas are adapted from howseen-ai/claude-motion-design (MIT).
+These motion and process ideas are adapted from howseen-ai/claude-motion-design (MIT). What we don't take from it:
+
+- its one accent colour for the whole video (the palette is a per-video choice; its one-visual-system rule we do adopt, above)
+- beat punches
+- continuously moving gradients, or text that overshoots while held
+- grain with an overlay blend
+- all-caps faces that change the lyric's capitalisation
+- its HTML and Playwright engine, chunked rendering, and loudness normalisation (Remotion and `pnpm render` stay)
+- anything specific to its author
 
 ### Rhythm: pulse only when the track pounds
 
-Beat-locked pulsing is genre-dependent. A per-beat or per-bar scale or brightness throb fought a slow ballad without heavy beats, and the user rejected it.
+This is a rule for every video: **no beat-locked rhythmic pulsing by default on a slow song without heavy beats**, unless the brief asks for it. A per-beat or per-bar scale or brightness throb fought a slow ballad, and the user rejected it.
 
 - **Sharp one-off moves on real musical events are fine** in any genre.
-- **Repeating beat-locked pulsing** (the kinetic kit's `BeatPulse`, a scene-wide beat punch) only when the track has heavy, regular beats: dance, electro, rock with a four-on-the-floor kick. Check the genre in `brief.json` and the low-band energy and onsets in `audio-analysis.json`.
+- **Repeating beat-locked pulsing** (the kinetic kit's `BeatPulse`, a scene-wide beat punch) only when the track has heavy, regular beats (dance, electro, rock with a four-on-the-floor kick) or the brief asks for it. Check the genre in `brief.json` and the low-band energy and onsets in `audio-analysis.json`.
 - **For ballads and anything soft:** slow background movement on heavily smoothed energy (`useEnergySwell`), and single accents on real events: the hook downbeat, stop-time hits, the key change, an instrument's entrance.
 
 ### Mascots and graphics
 
-App-icon framing (a squircle tile, a badge, a rounded-square icon) reads as low-fi at video size. Draw mascots and hero graphics freestanding, at a higher fidelity: a layered illustration, glass, or neon line art. When you aren't sure which treatment fits, pitch 2 or 3 as an options sheet before building one.
+The treatment of a mascot or hero graphic is a per-video choice: the direction names it (flat, illustrated, 3D, line art, glass, or something else that fits the look), and the critic checks the build against it. Whatever the treatment, keep it at one fidelity across every shot, and big enough to read at phone size. When the user dislikes an element after seeing it, pitch 2 or 3 treatments of just that element as an options sheet (see "Concept round"), rather than re-rendering the video to try again.
 
 ### Safe areas
 
@@ -165,30 +232,34 @@ Only three kinds of text appear: **the sung lyrics**, **exact feature names** as
 
 ## 4. One-shot build
 
-1. **Plan in direction.md.** Every section's concept, its hits by word or beat, and its handoff are written before code.
-2. **Build this direction's primitives** in `src/components/<direction-name>/`: the 4 to 6 moves from the motion vocabulary, the text style, the backdrop. The template's `src/components/kinetic/*` and `src/components/motion/*` are optional; use a piece only when it fits the direction.
+1. **Plan in direction.md and beatmap.md.** Every section's concept, every line's world, transition in, text exit, and accent, and every hard cut are written before code.
+2. **Build this direction's primitives** in `src/components/<direction-name>/`: the 4 to 6 moves from the motion vocabulary, the text style, the backdrop. The template's `src/components/kinetic/*` and `src/components/motion/*` are optional; use a piece only when it fits the direction. The layer pair is not optional: lyrics on `LyricLayer`, the world on `WorldLayer`, world transitions through `ShotTimeline`.
 3. **Build scenes section by section**, in song order, one folder per scene under `src/scenes/`, registered in `SCENES` in `src/scenes/registry.ts` under the scene keys `sections.json` uses. Then delete the placeholder and set `DEFAULT_SCENE` to `null`, so a missing key stops the render. Write a header comment per scene: its time range and, line by line, what happens. Run `pnpm typecheck` and `pnpm lint` after each scene.
-4. **Self-check loop** (below), then fix.
-5. **Render and hand off:** `pnpm render`, `pnpm preview`, `pnpm contact-sheet`. Report the output paths. For a concept composition, `pnpm render --composition=<id>` writes `out/<id>.mp4`; pass that to `pnpm preview` and `pnpm contact-sheet` with `--in` and `--out`. For a text-heavy master, add `--image-format=png` to `pnpm render`: cleaner type, about 50% slower, and much bigger (about 650 MB for 4:23).
+4. **Draft rounds with the critic** (section 5): you render a half-res draft, run the checks, and report; the lead runs the `music-video:video-critic` agent on it; you fix its items. Repeat until it accepts. There's no round cap.
+5. **Master render and hand off,** only after the critic's ACCEPT: `pnpm render`, `pnpm preview`, `pnpm contact-sheet`. Report the output paths. For a concept composition, `pnpm render --composition=<id>` writes `out/<id>.mp4`; pass that to `pnpm preview` and `pnpm contact-sheet` with `--in` and `--out`. For a text-heavy master, add `--image-format=png` to `pnpm render`: cleaner type, about 50% slower, and much bigger (about 650 MB for 4:23).
 
-No inspector rounds on scenes. The self-check is the review.
+Scenes don't go to an inspector; they go to the critic. The builder can't judge its own work: in a howseen-ai/claude-motion-design run, the critic's first round caught text collisions during swaps, a dead 14 s intro, a dead 30 s outro, lyrics cropped by the top edge, a strobe, and a hard-edged card, all missed by the builder's still checks.
 
-## 5. Self-check loop
+## 5. Self-check and the critique round
 
-`pnpm still` and `pnpm render` launch Chrome (including the composition's metadata step), so they need an unsandboxed run (`dangerouslyDisableSandbox: true`). `preview`, `contact-sheet`, and `jitter` don't launch Chrome (ffmpeg, plus numpy for `jitter`) and run inside the sandbox.
+Judge rhythm, not sharpness: every round works from a half-res draft, and the full master comes last. `pnpm draft`, `pnpm still`, and `pnpm render` (the text-only render included) launch Chrome (including the composition's metadata step), so they need an unsandboxed run (`dangerouslyDisableSandbox: true`). `preview`, `contact-sheet`, `jitter`, `critique`, `pops`, and `beatmap` don't launch Chrome and run inside the sandbox.
 
-1. **List the check frames** from `src/data/sections.json` and `lyrics.json`:
-   - each section's first frame and first frame + 8
-   - each big hit and hit + 2
-   - the frame where each line's last word lands, and the frame just after it for every line with g, j, p, q, or y, or punctuation at a mask edge
-   - **the transition sweep:** the start, middle, and end of every transition, plus each shot's first two frames. Stills that all sit on settled shots miss what breaks between them: one run crashed on a clock that went negative before a section's start, and no settled still showed it.
-   - the last frame of the video
-2. **Render them** with `pnpm still --frame=<n> --out=out/wip-<pass>/f-<n>.png` (`<n>` is the absolute frame; add `--composition=<id>` for a concept). `out/wip-*` is scratch the lead offers to delete at the end.
-3. **Look at every one** with the Read tool. Don't infer a frame from the code.
-4. **Measure held text** on a render (a short `--frames` test is enough): `pnpm jitter --in <mp4> --from <frame> --frames <n> --crop x,y,w,h` over a held lyric. `--from` is a frame of the MP4 being measured (`--from=300`), or seconds into it with an `s` (`--from=10s`). On a full render that's the song frame. On a `--frames=<a>-<b>` render the file starts at 0, so subtract `<a>` (and `<a>`/fps from seconds): a lyric held from song frame 1350 in a `--frames=1200-1499` test is `--from=150`. Start `--from` after the line's last word has settled (that word's start frame plus the spring's settle frames; about 1 s later is safe), not at the line's start. It passes when the printed summary's mean shift is 0.01 px or less. `--max` gates the largest per-pair shift, so use it only as a loose guard (`--max=0.05`); a good render measured mean 0.008 px, max 0.011 px. Check every distinct text treatment, and quote the numbers in your report.
-5. **Check readability:** every lyric on screen for at least 0.7 s, revealed at no more than about 17 characters per second.
-6. **Fix, in this order:** a crash or a broken transition frame, text you can't read (size, contrast, clipping, overlap with a prop), a lyric that doesn't match the line sung at that frame, held text that moves, an empty or half-built frame, overlapping layers that weren't meant to overlap, then polish.
-7. **Repeat** only on the frames you changed. Two passes is normal; stop when the frames and the numbers are clean.
+Each round `n`:
+
+1. **Render the draft:** `pnpm draft --out out/draft-r<n>.mp4`, a half-scale render through the audio-safe wrapper. Expect a few minutes for a full song; measure it on your first round. (The 3.5 minutes quoted for a 262 s draft came from the howseen engine, not from `pnpm draft`.)
+2. **Render the critique sheets:** `pnpm critique --in out/draft-r<n>.mp4 --tag r<n>`. It writes `out/critique/r<n>/`: `overview_NN.png` (a tile every 2 s, 270 px, 6×5 per sheet), `phone_NN.png` (a tile every 4 s, 360 px), and `strip_<seconds>.png` (12 frames from 0.1 s before each moment), all labelled with time and frame. Strips default to every lyric line start and section start. `--strips=<s,…>` (seconds) replaces the defaults, and a re-run of a tag removes that tag's older sheets, so put extra strips (the hard cuts, the biggest transitions) in a second tag: `pnpm critique --in out/draft-r<n>.mp4 --tag r<n>-extra --strips=<s,…>`. These sheets replace most per-frame still sweeps.
+3. **Look at every sheet** with the Read tool: the overviews for pacing and the 4 s rule, the phone tiles for readability, the strips for exits, transitions, collisions, and crops. Don't infer a frame from the code.
+4. **Scan for pops:** `pnpm pops --in out/draft-r<n>.mp4 --cuts=<frame,…> --fail > out/critique/r<n>.pops.txt 2>&1`, and note the exit code. `--cuts` takes the beat map's hard cuts as song frames, each the first frame of the new shot. It finds pop spikes and one-frame flashes; a pop within ±1 frame of a listed cut is excused, a flash never is. In one run it caught three real bugs. It must pass before you report.
+5. **Measure held text** at full scale (a half-scale draft can't show shimmer): `pnpm render --props='{"textOnly":true}' --out out/text-only.mp4` draws the lyric alone on black. Always pass `--out`: without it the render overwrites the main video. Then `pnpm jitter --all-lines --in out/text-only.mp4 > out/critique/r<n>.jitter.txt 2>&1`. It reports each line's mean and max shift over its hold window and `lines with motion during hold: N`. Every line passes at a mean shift of 0.01 px or less, and must before you report.
+6. **Close-ups only where a sheet can't settle it:** a descender at a mask edge, the hit frame itself, a single transition frame. Use `pnpm still --frame=<n> --out=out/wip-r<n>/f-<n>.png` (`<n>` is the absolute frame; add `--composition=<id>` for a concept). `out/wip-*` is scratch the lead offers to delete at the end.
+7. **Fix what the machine checks find** (a crash, a pop, a jitter failure) and re-draft until pops and jitter pass. Leave the judgement calls to the critic.
+8. **Report the round** to the lead (the director agent's report lists what goes in it). The lead runs the critic.
+9. **Fix the critic's items.** The 3 worst problems, plus every item in a category or section scored 7 or lower. **Regression guard:** don't touch a section the critic scored 9 or higher. Before fixing, copy the scene and component files you'll change to `out/snapshots/r<n>/`, so a regression can be put back. Then go to round `n + 1`.
+10. **Version rule.** A new draft replaces the previous one only if the critic judges it better side by side. When it says the new draft is worse, put back the sections it names as regressed from the snapshot before fixing anything else.
+
+The single-lyric jitter command is still there for a targeted check: `pnpm jitter --in <mp4> --from <frame> --frames <n> --crop x,y,w,h` over a held lyric. `--from` is a frame of the MP4 being measured (`--from=300`), or seconds into it with an `s` (`--from=10s`). On a full render that's the song frame. On a `--frames=<a>-<b>` render the file starts at 0, so subtract `<a>` (and `<a>`/fps from seconds): a lyric held from song frame 1350 in a `--frames=1200-1499` test is `--from=150`. Start `--from` after the line's last word has settled (that word's start frame plus the spring's settle frames; about 1 s later is safe), not at the line's start. It passes when the printed summary's mean shift is 0.01 px or less. `--max` gates the largest per-pair shift, so use it only as a loose guard (`--max=0.05`): a good render measured mean 0.008 / max 0.011 px with the earlier estimator, which read slightly high.
+
+**Fix order,** within a round: a crash or a broken transition frame, a pop or flash, text you can't read (size, contrast, clipping, a crop at the frame edge, overlap with a prop or another line), a lyric that doesn't match the line sung at that frame, held text that moves, an empty or dead stretch, overlapping layers that weren't meant to overlap, then polish. Every lyric stays on screen at least 0.7 s, revealed at no more than about 17 characters per second.
 
 ## Known pitfalls
 
@@ -201,8 +272,15 @@ From the Kizen run:
 
 From the GitHub run (`examples/github.md`):
 
-- **One look for the whole song.** A single grid wall for 4.5 minutes was rejected after a full render. See "Variety" above, and offer a concept round when the song is long.
+- **One static look for the whole song.** A single grid wall held for 4.5 minutes was rejected after a full render as dated and samey. The fix that worked was one unifying system with variety inside it (see "One unifying system, varied inside it"), not a new world per line.
+- **A new world per line.** A later build that swapped to an unrelated world for each lyric felt disconnected next to the version that kept one system throughout. Variety lives inside the system.
 - **Pulsing on a ballad.** A per-beat scale throb was rejected as fighting the song. See "Rhythm" above.
 - **Shimmering held lyrics.** Unsettled springs, lyrics inside the camera wrapper, and re-seeded grain over the text. See "Held text stays still" above.
 - **A clock that goes negative.** A shot's local clock computed before its section starts went below zero and crashed the render mid-transition. Clamp local clocks at 0, and sweep transition frames.
-- **An app-icon mascot.** A mascot in a squircle tile read as low-fi; the freestanding glass treatment from a three-way options sheet replaced it.
+- **A disliked element, re-rendered blind.** That user disliked the mascot's treatment; a three-way options sheet settled it without re-rendering the video. Which treatment they picked was their choice, not a default.
+
+From the howseen comparison (`examples/github.md`):
+
+- **Lyrics carried by world transitions.** Whips blurred and slid the held lyric, zooms scaled and blurred it, and an iris covered it while held. See "Text-led transitions".
+- **Too few hard cuts.** One hard cut in a 4:23 song, against 7 in the howseen run, put on the stop-time hits and the key change with a push-in peaking into the cut.
+- **Builder-only review.** Still checks by the builder missed collisions, crops, dead stretches, and a strobe that a separate critic caught in its first round. See section 5.

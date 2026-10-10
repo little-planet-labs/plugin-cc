@@ -51,8 +51,9 @@ const energySwellAt = (analysis: AudioAnalysis, frame: number, fps: number, opti
  * Heavily smoothed 0..1 low/mid energy at the current song frame, for slow
  * background movement (a glow that blooms with the chorus, a 2-3% scale swell
  * on the backdrop). The filter spans two bars, so there is no beat-period
- * ripple: it rises and falls with the song's sections. Use it instead of
- * beat-locked pulsing on ballads and soft tracks, and keep lyrics out of
+ * ripple: it rises and falls with the song's sections. It gives smoothed
+ * movement where beat-locked pulsing is off (the default on slow songs without
+ * heavy beats, unless the brief asks for pulsing). Keep lyrics out of
  * anything it scales.
  */
 export const useEnergySwell = (options: EnergySwellOptions = {}): number => {

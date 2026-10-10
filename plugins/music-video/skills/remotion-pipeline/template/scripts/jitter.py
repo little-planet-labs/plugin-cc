@@ -12,7 +12,10 @@ file. For each consecutive pair of frames it measures:
 - diff: the mean absolute pixel difference (0..255), which also catches
   scaling, flicker and grain that don't translate.
 
-Prints one JSON object to stdout: {"width", "height", "frames", "pairs": [...]}.
+It also reports each frame's brightest pixel (0..255), which `pnpm jitter
+--all-lines` uses to tell a blank frame (the lyric has gone) from a held one.
+
+Prints one JSON object to stdout: {"width", "height", "frames", "pairs": [...], "peaks": [...]}.
 """
 
 from __future__ import annotations
@@ -30,8 +33,14 @@ def subpixel(c: float, m: float, p: float) -> float:
     (before) and `p` (after). Phase correlation's peak is a Dirichlet kernel, not
     a parabola: the larger neighbour r1 puts the peak r1 / (r1 + c) of a pixel
     towards it (Foroosh, Zerubia & Berthod 2002). A parabolic fit reads a
-    0.25 px shift as ~0.12 px."""
+    0.25 px shift as ~0.12 px.
+
+    Equal neighbours mean no offset. Identical frames of a hard-edged shape
+    give a peak with equal, nonzero neighbours (the shape's spectrum has exact
+    zeros), which the formula alone would read as a shift of p / (p + c)."""
     if c <= 0:
+        return 0.0
+    if abs(p - m) <= 1e-9 * c:
         return 0.0
     if p >= m:
         return 0.0 if p <= 0 else p / (p + c)
@@ -96,7 +105,13 @@ def main() -> int:
         return 1
     frames = data.reshape(-1, args.height, args.width).astype(np.float64)
     json.dump(
-        {"width": args.width, "height": args.height, "frames": len(frames), "pairs": measure(frames, args.threshold)},
+        {
+            "width": args.width,
+            "height": args.height,
+            "frames": len(frames),
+            "pairs": measure(frames, args.threshold),
+            "peaks": [int(f.max()) for f in frames],
+        },
         sys.stdout,
     )
     return 0

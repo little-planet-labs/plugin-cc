@@ -15,14 +15,17 @@ import {renderToString} from 'react-dom/server';
 import {Sequence, spring} from 'remotion';
 import {
   CircleFlood,
+  floodGeometry,
   Grain,
   logZoom,
   MaskedWords,
+  maskedExitPlan,
   Scrim,
   settleFrames,
   SPRING_PRESETS,
   springSettled,
   useEnergySwell,
+  type MaskedExit,
   type SpringPreset,
 } from '../src/components/motion';
 import type {AudioAnalysis} from '../src/lib/analysis-schema';
@@ -222,9 +225,10 @@ describe('MaskedWords', () => {
     // Discriminates: a word that has just been revealed is still rising.
     const rising = stylesBy(renderAt(Words, WORD_STARTS[1]!), 'word');
     assert.match(rising[1]!, /transform:translateY/);
-    // Long after the last word's snappy spring settled, before the exit fade.
+    // Long after the last word's snappy spring settled, before the first exit
+    // starts (default fade: 9 frames, 1 apart, ending at 118 -> word 0 leaves at 107).
     const settledFrame = WORD_STARTS[2]! + settleFrames(FPS, 'snappy') + 2;
-    assert.ok(settledFrame < 116);
+    assert.ok(settledFrame + 3 < 107);
     const held = stylesBy(renderAt(Words, settledFrame), 'word');
     assert.deepEqual(Object.keys(held).map(Number), [0, 1, 2]);
     for (const [i, style] of Object.entries(held)) {
@@ -247,7 +251,7 @@ describe('MaskedWords', () => {
     // The spring starts LEAD_FRAMES (2) before the reveal, hidden behind the mask.
     const springStart = reveal - 2;
     const settle = springStart + settleFrames(FPS, 'playful');
-    assert.ok(settle < 116, 'settles before the exit fade');
+    assert.ok(settle + 10 < 107, 'settles before the first exit starts');
     let overshootFrames = 0;
     for (let f = reveal; f < settle; f++) {
       const style = stylesBy(renderAt(Playful, f), 'word')[0]!;
@@ -278,8 +282,12 @@ describe('MaskedWords', () => {
       // Later words are still hidden.
       for (let j = i + 1; j < WORD_STARTS.length; j++) assert.match(on[j]!, /visibility:hidden/, `word ${j} hidden at ${start}`);
     });
-    // The line leaves when the next line starts.
-    assert.equal(renderAt(Words, 119).includes('Jumping'), true);
+  });
+
+  it('MaskedWords is gone 2 frames before the next line starts', () => {
+    // The next line's first word is at frame 120: the line renders nothing from 118 on.
+    assert.equal(renderAt(Words, 117).includes('Jumping'), true);
+    assert.equal(renderAt(Words, 118).includes('Jumping'), false);
     assert.equal(renderAt(Words, 120).includes('Jumping'), false);
   });
 
@@ -293,6 +301,202 @@ describe('MaskedWords', () => {
     assert.deepEqual(hidden(122), [false, false, true]);
     assert.deepEqual(hidden(123), [false, false, true]);
     assert.deepEqual(hidden(124), [false, false, false]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MaskedWords exits
+// ---------------------------------------------------------------------------
+
+const EXITS: MaskedExit[] = ['fade', 'up', 'down', 'left', 'right', 'scatter', 'fall', 'blur', 'shrink', 'cut', {suckTo: [40, -200]}];
+const exitName = (e: MaskedExit) => (typeof e === 'string' ? e : 'suck');
+const TRAVELLING = new Set(['left', 'right', 'scatter', 'fall', 'blur', 'shrink']);
+
+const Exiting = ({exit, ...rest}: {exit: MaskedExit; exitBy?: number; until?: number; seed?: string}) => (
+  <LyricsContext.Provider value={lines}>
+    <Sequence from={30}>
+      <MaskedWords id="v-1" exit={exit} {...rest} />
+    </Sequence>
+  </LyricsContext.Provider>
+);
+
+/** Style of a word with every property an exit may set removed: what's left decides layout. */
+const layoutOf = (style: string) =>
+  style
+    .split(';')
+    .filter((d) => d && !/^(transform|transform-origin|opacity|filter|visibility):/.test(d))
+    .join(';');
+
+const EXIT_STYLE = /transform|opacity|filter|visibility:hidden/;
+
+describe('MaskedWords exits', () => {
+  // v-1: reveals 60, 69, 78; the next line's first word is at 120, so E = 118.
+  // Default exit: 9 frames, 1 frame apart, the last word gone at 118: word 0
+  // leaves from 107, word 1 from 108, word 2 from 109. A cut: the whole line vanishes at 118.
+  it('MaskedWords renders nothing from 2 frames before the next line for every exit kind', () => {
+    for (const exit of EXITS) {
+      const C = () => <Exiting exit={exit} />;
+      for (const f of [118, 119, 120, 150]) assert.doesNotMatch(renderAt(C, f), /data-word|data-copy-word/, `${exitName(exit)}: frame ${f}`);
+      // A cut has no exit frames: the whole line is held on 117 and gone on 118.
+      const firstExit = exit === 'cut' ? 118 : 107;
+      // Before its exit starts the whole line is visible and held still.
+      const held = stylesBy(renderAt(C, firstExit - 1), 'word');
+      assert.deepEqual(Object.keys(held).map(Number), [0, 1, 2], exitName(exit));
+      for (const [i, style] of Object.entries(held)) assert.doesNotMatch(style, EXIT_STYLE, `${exitName(exit)}: word ${i} held at ${firstExit - 1}: ${style}`);
+      if (exit === 'cut') continue;
+      // On its first exit frame word 0 is visibly leaving, the others still held.
+      const leaving = stylesBy(renderAt(C, firstExit), 'word');
+      assert.match(leaving[0]!, EXIT_STYLE, `${exitName(exit)}: word 0 leaves at ${firstExit}`);
+      assert.doesNotMatch(leaving[1]!, EXIT_STYLE, `${exitName(exit)}: word 1 still held at ${firstExit}`);
+      // The last word is still on screen on the last frame before E.
+      assert.ok(renderAt(C, 117).includes('gypsy'), `${exitName(exit)}: last word on at 117`);
+    }
+  });
+
+  it('MaskedWords cut removes the whole line at once, ignoring exitStagger', () => {
+    const C = () => (
+      <LyricsContext.Provider value={lines}>
+        <MaskedWords id="v-1" exit="cut" exitStagger={4} />
+      </LyricsContext.Provider>
+    );
+    for (const f of [110, 114, 117]) {
+      const words = stylesBy(renderAt(C, f), 'word');
+      assert.deepEqual(Object.keys(words).map(Number), [0, 1, 2]);
+      for (const [i, style] of Object.entries(words)) assert.doesNotMatch(style, EXIT_STYLE, `word ${i} still on at ${f}`);
+    }
+    assert.doesNotMatch(renderAt(C, 118), /data-word/);
+  });
+
+  it('MaskedWords holds the last line with no exit when nothing bounds it', () => {
+    // v-2 is the last line in lyrics order and has no exitBy or until.
+    for (const exit of EXITS) {
+      const C = () => (
+        <LyricsContext.Provider value={lines}>
+          <MaskedWords id="v-2" exit={exit} />
+        </LyricsContext.Provider>
+      );
+      for (const f of [200, 400, 599]) {
+        const words = stylesBy(renderAt(C, f), 'word');
+        assert.deepEqual(Object.keys(words).map(Number), [0, 1, 2], `${exitName(exit)} at ${f}`);
+        for (const [i, style] of Object.entries(words)) assert.doesNotMatch(style, EXIT_STYLE, `${exitName(exit)}: word ${i} held at ${f}`);
+      }
+    }
+  });
+
+  it('MaskedWords exits move words without reflowing the others and release the mask only for travelling exits', () => {
+    const heldLayout = Object.values(stylesBy(renderAt(() => <Exiting exit="fade" />, 100), 'word')).map(layoutOf);
+    for (const exit of EXITS) {
+      const name = exitName(exit);
+      const C = () => <Exiting exit={exit} />;
+      // Frame 112: word 0 is mid-exit (or gone) for every non-cut kind.
+      const html = renderAt(C, 112);
+      const words = stylesBy(html, 'word');
+      assert.deepEqual(Object.values(words).map(layoutOf), heldLayout, `${name}: word boxes unchanged`);
+      const mask0 = stylesBy(html, 'mask')[0]!;
+      if (TRAVELLING.has(name)) assert.match(mask0, /overflow:visible/, `${name}: mask released while travelling`);
+      else assert.match(mask0, /overflow:hidden/, `${name}: mask kept`);
+      if (name === 'up' || name === 'down') assert.match(words[0]!, /translateY\(/, name);
+      // A word that has not started its exit keeps its mask.
+      const held = stylesBy(renderAt(C, 106), 'mask');
+      for (const style of Object.values(held)) assert.match(style, /overflow:hidden/, `${name}: held mask clips`);
+    }
+    // Suck: a copy layer spirals word 0 into the block-space point; the in-flow word keeps its box, hidden.
+    const suck = renderAt(() => <Exiting exit={{suckTo: [40, -200]}} />, 112);
+    assert.match(suck, /data-suck="0" style="[^"]*transform-origin:40px -200px;[^"]*transform:rotate\(/);
+    assert.match(stylesBy(suck, 'word')[0]!, /visibility:hidden/);
+  });
+
+  it('MaskedWords earlier exitBy wins over the next line', () => {
+    for (const exit of EXITS) {
+      for (const bound of [{exitBy: 100}, {until: 100}, {exitBy: 100, until: 140}]) {
+        const C = () => <Exiting exit={exit} {...bound} />;
+        assert.doesNotMatch(renderAt(C, 100), /data-word/, `${exitName(exit)} ${JSON.stringify(bound)}: gone at 100`);
+        assert.match(renderAt(C, 85), /data-word/, `${exitName(exit)}: still on at 85`);
+      }
+      // A later bound doesn't extend the line past the next line's rule.
+      const late = () => <Exiting exit={exit} exitBy={200} />;
+      assert.doesNotMatch(renderAt(late, 118), /data-word/, `${exitName(exit)}: exitBy 200 still gone at 118`);
+    }
+  });
+
+  it('MaskedWords scatter and fall are deterministic per seed', () => {
+    for (const exit of ['scatter', 'fall'] as const) {
+      const at = (seed?: string) => renderAt(() => <Exiting exit={exit} seed={seed} />, 113);
+      assert.equal(at('a'), at('a'), `${exit}: same seed, same frame`);
+      assert.notEqual(at('a'), at('b'), `${exit}: another seed differs`);
+      assert.equal(at(), at('v-1'), `${exit}: the seed defaults to the line id`);
+      assert.match(at('a'), /data-word="0" style="[^"]*transform:translate\(/, exit);
+    }
+  });
+
+  it('MaskedWords meets the 2-frame rule on a very short hold', () => {
+    // Words at frames 60, 63, 66 and the next line at 69: E = 67, before any word settles.
+    const short: LyricLine[] = [
+      {id: 's-1', text: 'go go go', start: 2, end: 2.25, words: [{text: 'go', start: 2, end: 2.1}, {text: 'go', start: 2.1, end: 2.2}, {text: 'go', start: 2.2, end: 2.25}]},
+      {id: 's-2', text: 'now', start: 2.3, end: 2.6, words: [{text: 'now', start: 2.3, end: 2.6}]},
+    ];
+    for (const exit of EXITS) {
+      const C = () => (
+        <LyricsContext.Provider value={short}>
+          <MaskedWords id="s-1" exit={exit} />
+        </LyricsContext.Provider>
+      );
+      for (const f of [67, 68, 69]) assert.doesNotMatch(renderAt(C, f), /data-word/, `${exitName(exit)}: frame ${f}`);
+      assert.match(renderAt(C, 66), /data-word/, `${exitName(exit)}: on at 66`);
+      // Every word is on screen, not yet leaving, on its reveal frame.
+      [60, 63, 66].forEach((r, i) => {
+        const style = stylesBy(renderAt(C, r), 'word')[i]!;
+        assert.doesNotMatch(style, /visibility:hidden|opacity|filter/, `${exitName(exit)}: word ${i} shown at ${r}: ${style}`);
+      });
+    }
+  });
+
+  it('maskedExitPlan never starts an exit before the reveal and ends every exit by E', () => {
+    // Holds from generous to none: settle 13 frames after each reveal.
+    for (let end = 40; end <= 140; end += 3) {
+      for (const [X, G] of [
+        [9, 1],
+        [12, 3],
+        [4, 0],
+        [0, 2],
+      ] as const) {
+        const reveals = [30, 34, 38, 45];
+        const plan = maskedExitPlan({reveals, settled: reveals.map((r) => r + 13), end, exitFrames: X, exitStagger: G});
+        plan.forEach((p, k) => {
+          const r = reveals[k]!;
+          assert.ok(p.start + p.frames <= end + 1e-9, `end ${end} X ${X}: word ${k} ends at ${p.start + p.frames}`);
+          assert.ok(p.start >= Math.min(r, end), `end ${end} X ${X}: word ${k} starts ${p.start} before its reveal ${r}`);
+          assert.ok(p.frames <= X + 1e-9);
+        });
+        // With room to spare, the full exit plays and the last word leaves exactly at E.
+        if (end >= 45 + 13 + X + 3 * G) {
+          assert.equal(plan[3]!.start + plan[3]!.frames, end);
+          assert.equal(plan[3]!.frames, X);
+          assert.equal(plan[0]!.start, end - X - 3 * G);
+        }
+      }
+    }
+  });
+
+  it('maskedExitPlan collapses to a cut when not even a compressed exit fits', () => {
+    // Reveals at 60 and 62, gone by 61: no room for any exit.
+    assert.deepEqual(maskedExitPlan({reveals: [60, 62], settled: [73, 75], end: 61, exitFrames: 9, exitStagger: 1}), [
+      {start: 61, frames: 0},
+      {start: 61, frames: 0},
+    ]);
+    const C = () => (
+      <LyricsContext.Provider
+        value={[
+          {id: 'c-1', text: 'no time', start: 2, end: 2.07, words: [{text: 'no', start: 2, end: 2.03}, {text: 'time', start: 2.07, end: 2.09}]},
+          {id: 'c-2', text: 'next', start: 2.1, end: 2.5},
+        ]}
+      >
+        <MaskedWords id="c-1" exit="scatter" />
+      </LyricsContext.Provider>
+    );
+    const at60 = stylesBy(renderAt(C, 60), 'word');
+    assert.doesNotMatch(at60[0]!, /opacity|filter|visibility:hidden/, 'word 0 shown at 60');
+    assert.doesNotMatch(renderAt(C, 61), /data-word/, 'cut at E = 63 - 2');
   });
 });
 
@@ -482,6 +686,59 @@ describe('CircleFlood', () => {
   });
 });
 
+describe('CircleFlood contractTo', () => {
+  // 400x300, grows from (60, 40) over 100..112, shrinks into (300, 200) over 130..140.
+  const size = {width: 400, height: 300};
+  const contract = {x: 300, y: 200, at: 130, frames: 10};
+  const Flood = () => (
+    <Sequence from={50}>
+      <CircleFlood at={100} frames={12} x={60} y={40} color="rgb(9, 8, 7)" contractTo={contract} ring={{color: 'rgb(1, 2, 3)', width: 14}} />
+    </Sequence>
+  );
+  const circles = (frame: number) =>
+    [...renderAt(Flood, frame, size).matchAll(/clip-path:circle\(([\d.]+)px at ([\d.]+)px ([\d.]+)px\)/g)].map((m) => ({r: Number(m[1]), cx: Number(m[2]), cy: Number(m[3])}));
+
+  it('CircleFlood with contractTo shrinks to radius 0 at the target by at + frames', () => {
+    const opts = {at: 100, frames: 12, x: 60, y: 40, contractTo: contract};
+    assert.equal(floodGeometry(140, opts, 400, 300), null, 'nothing at at + frames');
+    assert.equal(floodGeometry(150, opts, 400, 300), null, 'nor after');
+    assert.deepEqual(circles(140), [], 'nothing rendered at at + frames');
+    // Whole between the grow and the shrink.
+    const full = Math.hypot(400 - 60, 300 - 40) * 1.05;
+    const whole = floodGeometry(125, opts, 400, 300)!;
+    assert.ok(Math.abs(whole.r - full) < 1e-9 && whole.cx === 60 && whole.cy === 40);
+    // Shrinking: the radius falls to 0 and the centre travels to the target.
+    let lastR = Infinity;
+    let lastD = Infinity;
+    for (let f = 130; f < 140; f++) {
+      const g = floodGeometry(f, opts, 400, 300)!;
+      const d = Math.hypot(g.cx - 300, g.cy - 200);
+      assert.ok(g.r <= lastR && d <= lastD, `frame ${f}: r ${g.r}, distance ${d}`);
+      lastR = g.r;
+      lastD = d;
+    }
+    const lastFrame = floodGeometry(139, opts, 400, 300)!;
+    assert.ok(lastFrame.r > 0, `positive just before the end (${lastFrame.r})`);
+    const limit = floodGeometry(140 - 1e-9, opts, 400, 300)!;
+    assert.ok(limit.r < 1e-3 && Math.hypot(limit.cx - 300, limit.cy - 200) < 1e-3, 'the radius reaches 0 at the target');
+    // Rendered: the last frame's flood and ring sit near the target, the ring outside the flood.
+    const [ring, flood] = circles(139);
+    assert.ok(ring && flood, 'ring and flood render at 139');
+    assert.ok(flood.r > 0 && ring.r >= flood.r);
+    assert.ok(Math.hypot(flood.cx - 300, flood.cy - 200) < Math.hypot(60 - 300, 40 - 200) * 0.1, `centre ${flood.cx},${flood.cy} near the target`);
+  });
+
+  it('CircleFlood ring leads the edge while growing', () => {
+    const [ring, flood] = circles(106);
+    assert.ok(ring && flood);
+    assert.equal(Math.round((ring.r - flood.r) * 10) / 10, 14, 'ring width ahead of the edge');
+    assert.match(renderAt(Flood, 106, size), /background:rgb\(1, 2, 3\);clip-path:circle\([^"]*" data-flood-ring=""/, 'the ring has its own colour');
+    // Without contractTo the flood stays whole (existing behaviour).
+    const Plain = () => <CircleFlood at={100} frames={12} x={60} y={40} />;
+    assert.match(renderAt(Plain, 200, size), /clip-path:circle/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Determinism scan
 // ---------------------------------------------------------------------------
@@ -504,7 +761,7 @@ const FORBIDDEN: [string, RegExp][] = [
 describe('motion kit determinism', () => {
   it('kit has no Math.random, Date or CSS animation', () => {
     const files = readdirSync(KIT_DIR, {recursive: true, encoding: 'utf8'}).filter((f) => /\.(ts|tsx)$/.test(f));
-    assert.ok(files.length >= 6, `scanned ${files.join(', ')}`);
+    assert.ok(files.length >= 12, `scanned ${files.join(', ')}`);
     // The patterns can match: each one catches its own offender.
     const offenders = [
       'const x = Math.random();',

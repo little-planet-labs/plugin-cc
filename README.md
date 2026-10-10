@@ -201,12 +201,21 @@ Agents detect Cadence and Telescope by their tool names, so it doesn't matter wh
 Makes a kinetic-typography music video about any company. It researches the company, offers you a menu of song topics, writes lyrics and a Suno prompt, and, once you've made the song in Suno, builds a beat-synced Remotion video with its own look. No two videos share a visual style.
 
 ```
-company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction → video
+company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction + beat map → drafts ⇄ critic → video
 ```
 
 You approve each step that matters: the brief, the topics, the lyrics, and the creative direction. Satire and parody are fine, and it asks how the company's logo may be used and whether you'll monetize the video.
 
-Version 0.2.0 adds:
+Version 0.3.0 adds:
+
+- **Text-led transitions.** Lyrics sit on their own layer above the picture. Each line leaves with a designed exit (a slide, a scatter, a fall, a vortex) before a picture-only reveal runs underneath, usually in the direction the words left, and the next line rides above it. Hard cuts are kept for the biggest hits.
+- **A critic loop.** A separate read-only agent, `video-critic`, scores every half-res draft on a fixed nine-part rubric, coherence included, names the three worst problems with timestamps and measurable fixes, and rejects until every score is 8 or more. You see the scores after each round. There's no round cap; each round costs about 3 to 4 minutes of judging plus a draft render.
+- **New scripts:** `pnpm critique` (timestamped overview, phone-size, and transition-strip sheets from a render), `pnpm pops` (finds pops and one-frame flashes), `pnpm beatmap` (a per-line plan skeleton from the song's energy), and `pnpm draft` (a half-res render).
+- **Motion kit additions:** a world and lyric layer pair, a world-only transition player, text exit variants, flood contraction, an already-moving shot camera, world-only motion blur, and a world-only shatter effect for hits.
+- **One unifying visual system per video.** The direction sets one world, material, type system, palette logic, and motion language for the whole song, with variety inside it (how much, and whether per line or per section, set by the direction) rather than jumps to unrelated worlds. Which system, and the mascot, are decided per video.
+- **Your hard rules** go in the brief, and the critic checks each one.
+
+Version 0.2.0 added:
 
 - **A concept round.** Before the full build, the director can pitch three different looks, each with a contact sheet of the same key lyric moments and a short motion test, so you pick from moving pictures rather than a written direction.
 - **`pnpm render --composition=<id>`** renders any registered composition (such as a concept) with the audio kept in sync; `pnpm still` takes the same flag.
@@ -268,7 +277,7 @@ plugins/little-planet-factory/
   tests/                                   status mod tests, run with claude plugin test
 plugins/music-video/
   .claude-plugin/plugin.json               plugin manifest
-  agents/                                  company-researcher, lyricist, video-director
+  agents/                                  company-researcher, lyricist, video-director, video-critic
   skills/music-video/                      the playbook you invoke, with its user checkpoints
   skills/suno-songwriting/                 lyrics package and Suno prompt format
   skills/brand-extraction/                 brand colors, fonts, and logo into src/brand.json

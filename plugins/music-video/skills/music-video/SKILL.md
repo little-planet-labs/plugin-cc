@@ -1,12 +1,12 @@
 ---
 name: music-video
-description: The playbook for making a beat-synced kinetic-typography music video about any company, satire and parody included, with a song generated in Suno and a video rendered in Remotion. Runs eight phases with user checkpoints (brief interview, company research, topic menu, lyrics and Suno pack, the user's song, the audio pipeline, creative direction, one-shot scene build and render) plus an optional concept round of three rendered concepts, names the agent and hand-off for each, and covers instantiating the project from the template, logo use and monetization, taking in the audio, feedback rounds, the quality level, the deliverables, and cleanup. Use when the user wants a music video, song, or lyric video about a company or product.
+description: The playbook for making a beat-synced kinetic-typography music video about any company, satire and parody included, with a song generated in Suno and a video rendered in Remotion. Runs eight phases with user checkpoints (brief interview, company research, topic menu, lyrics and Suno pack, the user's song, the audio pipeline, creative direction with a per-line beat map, and the scene build) plus an optional concept round, then a critique loop in which a separate read-only critic scores each half-res draft on a fixed rubric until every score reaches 8, before the master render. Names the agent and hand-off for each, and covers instantiating the project from the template, logo use, monetization and the user's hard rules, taking in the audio, feedback rounds, the quality level, the deliverables, and cleanup. Use when the user wants a music video, song, or lyric video about a company or product.
 user-invocable: true
 ---
 
 # Music video
 
-You are the lead. Run the phases in order, stop at every ★ for the user, and dispatch the plugin's three agents for the phases they own. Everything without an agent is yours. Don't skip ahead: no lyrics before the topics are approved, and no full build before the direction or a concept is approved.
+You are the lead. Run the phases in order, stop at every ★ for the user, and dispatch the plugin's four agents for the phases they own: `music-video:company-researcher`, `music-video:lyricist`, `music-video:video-director`, and `music-video:video-critic`. Everything without an agent is yours. Don't skip ahead: no lyrics before the topics are approved, and no full build before the direction or a concept is approved.
 
 ## Ground rules
 
@@ -14,8 +14,9 @@ You are the lead. Run the phases in order, stop at every ★ for the user, and d
 - **On-screen copy is lyrics, exact feature names, and the logo** (only as `brief.logoUse` allows). No invented taglines, labels, or captions that aren't sung.
 - **The audio is read-only.** Nothing writes to `public/audio/track.*` after intake.
 - **No git writes** unless the user asks. Follow `little-planet-factory:version-control` if it's installed; the default is to leave everything uncommitted.
-- **Sandbox.** Headless Chrome can't launch inside the Claude Code Bash sandbox (mach-port denial), so `pnpm still` and `pnpm render` (including the composition's metadata step they run) need an unsandboxed run: pass `dangerouslyDisableSandbox: true`, or ask the user to turn the sandbox off with `/sandbox`. `preview`, `contact-sheet`, `analyze`, and `align` don't launch Chrome and run inside the sandbox. Inside the sandbox, `pip` needs `--use-deprecated=legacy-certs`.
-- **Quality level.** The deterministic pipeline (template `src/lib`, `scripts/`, render) gets reviewed; creative work doesn't. If anyone changes pipeline code, that diff goes to an inspector (`little-planet-factory:quality-bar`, foundational tier). Scenes, lyrics, and direction get no inspector rounds: the director self-checks with stills and the user is the reviewer. The user asked for less checking and a faster result.
+- **Sandbox.** Headless Chrome can't launch inside the Claude Code Bash sandbox (mach-port denial), so `pnpm still`, `pnpm render`, and `pnpm draft` (including the composition's metadata step they run, and the text-only render) need an unsandboxed run: pass `dangerouslyDisableSandbox: true`, or ask the user to turn the sandbox off with `/sandbox`. `preview`, `contact-sheet`, `analyze`, `align`, `critique`, `pops`, `jitter`, and `beatmap` don't launch Chrome and run inside the sandbox. Inside the sandbox, `pip` needs `--use-deprecated=legacy-certs`.
+- **Quality level.** Pipeline code gets an inspector: if anyone changes the deterministic pipeline (template `src/lib`, `scripts/`, render), that diff goes to an inspector (`little-planet-factory:quality-bar`, foundational tier). The video gets a judge: the builder can't review its own work, so every draft goes to `music-video:video-critic`, a separate read-only agent that scores it on a fixed rubric with a default stance of reject, and the build loops until it accepts (phase 8). In a howseen-ai/claude-motion-design run, the critic's first round caught text collisions, a dead 14 s intro and 30 s outro, lyrics cropped by the top edge, a strobe, and a hard-edged card, all missed by the builder's own still checks. Lyrics and direction are still the user's to approve at their checkpoints.
+- **General rules and per-video style.** Two rules hold for every video: the concept round is offered (phase 7b), and there's no beat-locked rhythmic pulsing by default on a slow song without heavy beats unless the brief asks for it. So do the universal defect checks the critic runs (shimmering held text, clipped descenders, collisions and crops, hard-edged seams, pops and flashes, phone readability, lyric accuracy, sync) and the pacing rules (motion by 0.5 s, a visible change at least every 4 s). The structure is general too: the direction defines one unifying visual system (a world, a material, a type system, a palette logic, and a motion language) that holds the whole video together, and variety comes from staging and transformations inside it, never from a new unrelated world per line. Which system, and everything else about the look (palette, type, mascot treatment), is decided per video in the direction, from the brief and the user's words.
 
 ## Phases
 
@@ -27,9 +28,11 @@ You are the lead. Run the phases in order, stop at every ★ for the user, and d
 | 4 | Lyrics and Suno pack | `music-video:lyricist` | `creative/lyrics.md`, `lyrics.screen.txt`, `lyrics.suno.txt`, `suno-prompt.md` | ★ |
 | 5 | Song and audio intake | the user, then you | `public/audio/track.wav` or `.mp3` | ★ |
 | 6 | Pipeline | you | `src/data/audio-analysis.json`, `lyrics.json`, `sections.json` | |
-| 7 | Creative direction | `music-video:video-director` | `creative/direction.md` | ★ |
+| 7 | Creative direction | `music-video:video-director` | `creative/direction.md`, `creative/beatmap.md` | ★ |
 | 7b | Concept round (optional) | `music-video:video-director` | `creative/concepts.md`, `src/concepts/<slug>/`, sheets and motion tests under `out/concepts/` | ★ |
-| 8 | Scene build, self-check, render | `music-video:video-director` | `src/scenes/**` (or the chosen concept), the MP4, preview, contact sheet | |
+| 8 | Scene build and draft rounds | `music-video:video-director` | `src/scenes/**` (or the chosen concept), `out/draft-r<n>.mp4`, `out/critique/r<n>/` | |
+| 8 | Critique, each round | `music-video:video-critic` (read-only) | nothing; you save its report to `creative/critique/r<n>.md` and show the user the scores | |
+| 8 | Master render, after ACCEPT | `music-video:video-director` | the MP4, preview, contact sheet | |
 
 Every agent brief gives the absolute project path and the files the agent may write. Agents write only their own files.
 
@@ -53,6 +56,8 @@ Settle what the request doesn't already say. Three `AskUserQuestion` rounds usua
 
 **Visual style.** If the user describes the look they want, copy their words verbatim into `visualStyle`. The director reads it as a requirement.
 
+**Hard rules.** When the user states a rule for the video, at any point ("keep the lyrics still", "no pulsing", "never all caps"), add it verbatim to `hardRules`. The critic checks every entry one by one, along with the general rules and the universal defect checks.
+
 Also settle the project folder; the default is `~/Developer/<company-slug>-music-video`. Then instantiate the project (next section) and write `creative/brief.json`:
 
 ```json
@@ -72,6 +77,7 @@ Also settle the project folder; the default is `~/Developer/<company-slug>-music
   "visualStyle": "",
   "logoUse": "untouched",
   "monetized": false,
+  "hardRules": [],
   "avoid": ["named customers", "pricing"],
   "approvedTopics": []
 }
@@ -168,8 +174,9 @@ Project: <abs path>. Load music-video:scene-authoring and music-video:remotion-p
 Read brief.json, research.md, lyrics.md, src/brand.json, src/data/*.json.
 The user's visual style, verbatim: "<brief.visualStyle>". Logo use: <brief.logoUse>.
 Past directions to avoid repeating: <vault entries tagged music-video-direction, or the
-user's answer>. Write ONLY creative/direction.md, including two contrasting alternates
-in one line each. No scene code yet.
+user's answer>. Hard rules: <brief.hardRules>. Write ONLY creative/direction.md
+(including its one unifying system and two contrasting alternates in one line each) and
+creative/beatmap.md (start from pnpm beatmap). No scene code yet.
 ```
 
 Before dispatching, look up past directions: with Cadence connected, `list_knowledge` with `tag: "music-video-direction"`; otherwise ask the user which past videos and looks to avoid. Show the user the direction's summary and ask: approve, pick an alternate, run a concept round, or redirect with notes.
@@ -181,7 +188,8 @@ Stills and a written direction can't show motion, and a single look rejected aft
 ```
 Project: <abs path>. Concept round. Load music-video:scene-authoring and
 music-video:remotion-pipeline. The user's words: "<verbatim>".
-Pitch three really different concepts in creative/concepts.md, with a recommendation.
+Pitch three really different unifying systems in creative/concepts.md, each varying
+across the same moments while staying one piece, with a recommendation.
 Build each as its own composition under src/concepts/<slug>/, registered in src/Root.tsx;
 leave src/scenes/ and the main composition alone. For each concept render:
 - a contact sheet of the SAME ~10 key lyric moments, at their real song frames
@@ -194,28 +202,66 @@ Read each sheet so it shows inline, give the clip paths, and ask: pick one, comb
 
 When the user dislikes one element (a mascot, a graphic, a transition), don't re-render the video to try again. Have the director pitch 2 or 3 treatments of just that element as an in-context options sheet with short clips, and re-render once the user picks.
 
-## 8. Build and render: video-director
+## 8. Build, critique loop, and render
+
+Phase 8 is a loop: the director builds and drafts, a separate critic judges, the director fixes, and only an accepted draft becomes the master. There's no round cap. Each round costs about 3 to 4 minutes of judging, plus a half-res draft (a few minutes for a full song; measure it on the first round) and the director's fixes. The user can still call it at any round.
+
+### Build and the first draft: video-director
 
 ```
-Project: <abs path>. Direction approved: creative/direction.md [or concept <id>]
-[plus the user's notes, verbatim]. Load music-video:scene-authoring and
-music-video:remotion-pipeline. Build every scene in one pass, run the self-check loop
-(stills, the transition sweep, pnpm jitter on held lyrics), then pnpm render
-[--composition=<id>], pnpm preview, pnpm contact-sheet [for a concept, both with
---in out/<id>.mp4 and their own --out].
-pnpm still and pnpm render launch Chrome and need dangerouslyDisableSandbox: true.
-Report the output paths, the stills you checked, the jitter numbers, and what you fixed.
+Project: <abs path>. Direction approved: creative/direction.md and creative/beatmap.md
+[or concept <id>] [plus the user's notes, verbatim]. Load music-video:scene-authoring and
+music-video:remotion-pipeline. Build every scene in one pass: lyrics on LyricLayer, world
+transitions through ShotTimeline only, a designed exit on every line, hard cuts only where
+the beat map puts them. Then run draft round 1: pnpm draft --out out/draft-r1.mp4,
+pnpm critique --in out/draft-r1.mp4 --tag r1 (extra strips under --tag r1-extra),
+pnpm pops --in out/draft-r1.mp4 --cuts=<hard-cut frames> --fail (output to
+out/critique/r1.pops.txt), then the full-scale text-only render
+pnpm render --props='{"textOnly":true}' --out out/text-only.mp4 (always with --out, or it overwrites the
+main video) and pnpm jitter --all-lines --in out/text-only.mp4 (output to
+out/critique/r1.jitter.txt). pnpm draft, still and render launch Chrome and need
+dangerouslyDisableSandbox: true. Stop and report the round; don't master-render.
+```
+
+### Each round
+
+1. **The director reports round `n`:** the draft path, the critique sheet paths, the pops result, and the jitter result. Check the files exist and that pops and jitter passed; send it back if not.
+2. **Spawn the critic** (`music-video:video-critic`):
+
+   ```
+   Project: <abs path>. Round <n>. Judge out/draft-r<n>.mp4 from its critique files:
+   out/critique/r<n>/ (overview_*, phone_*, strip_*) [and out/critique/r<n>-extra/],
+   out/critique/r<n>.pops.txt,
+   out/critique/r<n>.jitter.txt. Previous round's sheets: out/critique/r<n-1>/ [none on
+   round 1]. Also read creative/brief.json (hardRules, logoUse, genre, tone, visualStyle),
+   src/data/lyrics.json, creative/beatmap.md, creative/direction.md, and the earlier
+   reports creative/critique/r1.md to r<n-1>.md. The director says it changed (claims to
+   check, not facts): <the director's change list>. Return your fixed report.
+   ```
+
+3. **Save the report** verbatim to `creative/critique/r<n>.md`, so the next round's critic can mark earlier items fixed or not.
+4. **Give the user the scores** after every round: the nine scores in a table next to the previous round's, the three worst problems in a line each, and the verdict. Don't wait for an answer unless they want to weigh in; carry on.
+5. **REJECT:** resume the director with the report verbatim. It snapshots what it will change, fixes the 3 worst problems plus every item scored 7 or lower, leaves sections scored 9 or higher alone (the regression guard), and runs round `n + 1`. If the critic judged this draft worse than the previous one side by side, the director first puts back the sections it named as regressed: a new draft replaces the previous one only when the critic judges it better.
+6. **ACCEPT** (every score 8 or more and no hard-rule violation): go to the master render.
+
+### Master render: video-director
+
+```
+Project: <abs path>. The critic accepted draft r<n>. Master-render it: pnpm render
+[--composition=<id>] [--image-format=png], pnpm preview, pnpm contact-sheet [for a
+concept, both with --in out/<id>.mp4 and their own --out]. Report the output paths.
 ```
 
 For text-heavy masters, `pnpm render --image-format=png` avoids JPEG blocking around type; it's about 50% slower and much bigger (about 650 MB for a 4:23 master).
 
-No inspector round. Read the contact sheet image yourself once: a blank, washed-out, or empty-captioned cell goes back to the director with its timestamp. Otherwise deliver.
+Read the contact sheet image yourself once: a blank, washed-out, or empty-captioned cell goes back to the director with its timestamp. Otherwise deliver.
 
 ## Feedback rounds
 
 - **Relay the user's words verbatim** to the director, in quotes, alongside your summary. A paraphrase loses what they disliked.
 - **Stop a rejected render.** When the user rejects something in a render that's still running, stop that render before it finishes; don't spend the time finishing a look that's already out.
-- **Re-measure, don't eyeball.** Ask for numbers: `pnpm jitter` on the held lyrics the user flagged, A/V sync by cross-correlating the MP4's audio against `public/audio/track.*` (extract it with ffmpeg; the lag should be under one frame), and a sweep of every transition frame. "It looks fine now" isn't a fix.
+- **Re-measure, don't eyeball.** Ask for numbers: `pnpm jitter` on the held lyrics the user flagged, A/V sync by cross-correlating the MP4's audio against `public/audio/track.*` (extract it with ffmpeg; the lag should be under one frame), and `pnpm pops` plus the critique strips for anything between shots. "It looks fine now" isn't a fix.
+- **Feedback goes through a critique round.** The director's fix comes back as a new draft round, and the critic judges it as usual, with any new rule the user stated added to `hardRules` first. Master-render again only after an ACCEPT.
 
 ## Deliverables
 
@@ -239,6 +285,7 @@ List these with their sizes (`du -sh`) and ask with a multi-select `AskUserQuest
 |---|---|---|
 | `.cache/models/dl` | 560 MB of download tarballs | the extracted models stay in `.cache/models` |
 | `out/wip-*` | about 15 MB each | working stills and test renders only |
+| `out/draft-r*.mp4`, `out/critique/`, `out/snapshots/` | not measured yet; check with `du -sh` | half-res drafts, critique sheets, and round snapshots; the critic reports stay in `creative/critique/` |
 | `out/concepts/wip` | 2.4 GB after a concept round | working stills for the concept sheets |
 | A cancelled concept's full renders | 2.3 GB each with PNG frames | the concept wasn't picked; its source stays in `src/concepts/` |
 | `.venv-align` | about 500 MB (493 MB) | `pnpm setup:align` recreates it; delete once the lyrics are final |

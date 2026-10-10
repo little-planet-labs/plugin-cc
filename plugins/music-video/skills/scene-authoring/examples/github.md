@@ -1,12 +1,12 @@
 # Worked example: the GitHub video
 
-**Don't copy this look.** It's here for the concept round, the rejected first build, and the fixes that held up. The next video picks its own typography, motion, texture, and transitions (see "Check what's been done" in the skill).
+**Don't copy this look.** It's here for the concept round, the rejected first build, and the fixes that held up. The look, the glass cards, and the glass mascot were this user's choices for this video, not defaults. What does generalise is the structure: one unifying system (the same glass-card UI language, mesh gradients, and type throughout) with variety staged inside it; this user's video varied it on every line. The next video picks its own typography, motion, texture, and transitions (see "Check what's been done" in the skill).
 
 Project: a satire about outages, "Unicorn Goodbye", an overwrought power ballad. Song: 4:23, written at 80 BPM and read by the analysis at about 131 BPM with a half-time feel, 11 sections including a 13.7 s piano lead-in, two instrumental breaks, and a 31 s instrumental tail. No logo anywhere: the user left the mark out because the video may be monetized. The brief's visual note, verbatim: "visually stimulating with lots of color and full-bleed scenes and designs".
 
 ## The first build, rejected
 
-One system for the whole song: a full-bleed wall of rounded contribution-graph squares, repainted in cascades, with lyrics on dark bands cut into the wall and pixel props built from the same squares. It was planned in detail and rendered in full, and the user rejected it as dated and repetitive: every section was the same wall in a new colour. The grid was right for exactly one line ("My green squares bleeding red tonight") and wrong as the medium.
+One static look for the whole song: a full-bleed wall of rounded contribution-graph squares, repainted in cascades, with lyrics on dark bands cut into the wall and pixel props built from the same squares. It was planned in detail and rendered in full, and the user rejected it as dated and repetitive: every section was the same wall in a new colour. The grid was right for exactly one line ("My green squares bleeding red tonight") and wrong as the medium.
 
 ## The concept round
 
@@ -40,6 +40,10 @@ Each got a contact sheet of the same 10 moments at their real frames (the intro,
 | Bridge | A wall of glass tiles flipping one by one on "The Unicorns have taken over"; an isometric contribution chart whose red spreads from the far corner on "green squares bleeding red" |
 | Tail (31 s) | Its own movements on the downbeats and energy, not a held frame |
 
+## A new world per line, rejected
+
+A later 4K rebuild was briefed that one visual system for a whole song is repetitive, an over-reading of the grid-wall rejection, and built a new world for each lyric. The user found it disconnected and preferred Incident Keynote, which varied every line inside one consistent world. The grid wall failed because it was static and dated, not because it was one system.
+
 ## What worked
 
 - **A motion test before the full build.** The clips showed the transitions and the pacing, which no still can.
@@ -47,3 +51,11 @@ Each got a contact sheet of the same 10 moments at their real frames (the intro,
 - **A text layer nothing touches.** Held lyrics shimmered until springs settled to exactly 1, the lyrics left the camera and punch wrappers, and the grain moved below the text: background, then grain and vignette, then lyrics.
 - **The motif where it's sung.** The contribution grid appears once, on its own line, and lands harder for it.
 - **A PNG-frame master** (`--image-format=png`) for text-heavy shots over gradients: about 650 MB and 50% slower, and clean type.
+
+## What the howseen comparison taught
+
+The user then watched a run of howseen-ai/claude-motion-design (262 s, 39 scenes, 27 animated transitions) and preferred this video's style, but that run's process and transitions. Version 0.3.0 took these from it:
+
+- **Text-led transitions.** Here, whips blurred and slid the held lyric with the frame, zooms scaled and blurred it, and the iris covered it while held. There, each line left with its own exit on schedule, a world-only reveal ran underneath in the direction the words left, and the next line rode above it.
+- **Hard cuts on the biggest hits.** 7 there, each with a push-in peaking into the cut, against 1 here. Transitions ran 0.38 to 0.5 s.
+- **A separate critic.** That run's critic scored its two drafts hook 2, readability 5, motion 4, variety 6, composition 6, accuracy 7, sync 8, then 3, 5, 6, 7, 5, 7, 8, and caught collisions, dead stretches, crops, and a strobe the builder had missed.
