@@ -1,0 +1,10 @@
+{
+  "outputName": "music-video",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "fallbackSeconds": 60,
+  "audioCandidates": ["audio/track.wav", "audio/track.mp3"],
+  "render": {"scale": 2, "crf": 17, "preset": "medium", "pool": 2, "chunkSeconds": 20, "shutter": 0.5, "format": "png", "audioBitrate": "256k", "retries": 2},
+  "draft": {"scale": 0.5, "crf": 23, "preset": "veryfast", "format": "jpeg"}
+}

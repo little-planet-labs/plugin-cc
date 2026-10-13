@@ -198,7 +198,7 @@ Agents detect Cadence and Telescope by their tool names, so it doesn't matter wh
 
 ## Music Video
 
-Makes a kinetic-typography music video about any company. It researches the company, offers you a menu of song topics, writes lyrics and a Suno prompt, and, once you've made the song in Suno, builds a beat-synced Remotion video with its own look. No two videos share a visual style.
+Makes a kinetic-typography music video about any company. It researches the company, offers you a menu of song topics, writes lyrics and a Suno prompt, and, once you've made the song in Suno, builds a beat-synced 4K video with its own look. Each video gets one visual system of its own, varied inside it.
 
 ```
 company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction + beat map → drafts ⇄ critic → video
@@ -206,21 +206,17 @@ company → research → topic menu → lyrics + Suno prompt → your Suno song 
 
 You approve each step that matters: the brief, the topics, the lyrics, and the creative direction. Satire and parody are fine, and it asks how the company's logo may be used and whether you'll monetize the video.
 
-Version 0.3.0 adds:
+Version 1.0.0 replaces Remotion with a new rendering engine:
 
-- **Text-led transitions.** Lyrics sit on their own layer above the picture. Each line leaves with a designed exit (a slide, a scatter, a fall, a vortex) before a picture-only reveal runs underneath, usually in the direction the words left, and the next line rides above it. Hard cuts are kept for the biggest hits.
-- **A critic loop.** A separate read-only agent, `video-critic`, scores every half-res draft on a fixed nine-part rubric, coherence included, names the three worst problems with timestamps and measurable fixes, and rejects until every score is 8 or more. You see the scores after each round. There's no round cap; each round costs about 3 to 4 minutes of judging plus a draft render.
-- **New scripts:** `pnpm critique` (timestamped overview, phone-size, and transition-strip sheets from a render), `pnpm pops` (finds pops and one-frame flashes), `pnpm beatmap` (a per-line plan skeleton from the song's energy), and `pnpm draft` (a half-res render).
-- **Motion kit additions:** a world and lyric layer pair, a world-only transition player, text exit variants, flood contraction, an already-moving shot camera, world-only motion blur, and a world-only shatter effect for hits.
-- **One unifying visual system per video.** The direction sets one world, material, type system, palette logic, and motion language for the whole song, with variety inside it (how much, and whether per line or per section, set by the direction) rather than jumps to unrelated worlds. Which system, and the mascot, are decided per video.
-- **Your hard rules** go in the brief, and the critic checks each one.
+- **An HTML page, captured frame by frame.** Each video is one page whose every pixel is a function of the song time. Headless Chromium (through Playwright) captures it one frame at a time and ffmpeg encodes it. The engine and much of the method are adapted from howseen-ai/claude-motion-design (MIT), after a video made with it came out better than ours in a side-by-side comparison.
+- **Lyrics on their own layer.** The world, grain, lyrics, and flashes are separate layers, so camera moves, transitions, and effects never touch the words. Every line comes in on its sung words and leaves with a designed exit before the next line starts, and held words don't move by a pixel.
+- **4K masters, with a hard cap on machine load.** The master renders at 3840x2160 with motion blur only on the moves that need it. At most 2 render workers run at once by default (`render.pool` in the project's `src/pipeline.json`). A 4:23 song takes about 2.5 hours at that setting; a half-res draft takes about 5 minutes.
+- **More checks on every draft:** `pnpm still-test` (held words checked pixel for pixel), `pnpm check` (data, scenes, and anything that would make frames differ between runs), and timestamped critique sheets and pop scans that also work on short test renders.
+- **The method, carried over:** a named reference for each look, cuts at peak motion, transitions matched to how the words leave, caption timing rules, and a version log next to the critic loop. The critic, the concept round, the beat map, the audio analysis, the lyric alignment, and the Suno songwriting rules stay as they were.
 
-Version 0.2.0 added:
+A project started on 0.3.0 or earlier keeps its own copy of the old template and still renders with it, but its scenes don't carry over to the new engine.
 
-- **A concept round.** Before the full build, the director can pitch three different looks, each with a contact sheet of the same key lyric moments and a short motion test, so you pick from moving pictures rather than a written direction.
-- **`pnpm render --composition=<id>`** renders any registered composition (such as a concept) with the audio kept in sync; `pnpm still` takes the same flag.
-- **`pnpm jitter`** measures shimmer on held text, so "the lyrics are still" is a number rather than a guess.
-- **An optional motion kit** in the template (`src/components/motion/`): settled springs, masked word reveals, a soft text scrim, grain, energy swells, circle floods, and log-space zoom.
+Earlier versions added the concept round (0.2.0) and the critic loop, text-led transitions, the beat map, and one unifying visual system per video (0.3.0). All of them carry into 1.0.0.
 
 ### Install
 
@@ -246,11 +242,12 @@ Suno gets two things from the plugin: the lyrics and a style description. You ge
 ### Requirements
 
 - Node.js 22.18 or newer, and pnpm
-- ffmpeg
-- Python 3.12 or newer
+- Python 3.14
+- ffmpeg and ffprobe with the libx264 and aac encoders
+- curl and tar
 - A Suno account
 
-The first alignment run downloads about 1.4 GB of models into the project.
+Setup downloads headless Chromium (about 195 MB) into the project, and the first alignment run downloads about 650 MB of models that unpack to about 1.4 GB. A 4K master is about 3 GB, and needs about three times that free while it renders.
 
 ## Repository layout
 
@@ -282,8 +279,8 @@ plugins/music-video/
   skills/suno-songwriting/                 lyrics package and Suno prompt format
   skills/brand-extraction/                 brand colors, fonts, and logo into src/brand.json
   skills/scene-authoring/                  creative direction and scene-building craft
-  skills/remotion-pipeline/                analysis, alignment, and render pipeline
-  skills/remotion-pipeline/template/       the Remotion project each video starts from
+  skills/video-pipeline/                   analysis, alignment, page engine, render, and QA pipeline
+  skills/video-pipeline/template/          the project each video starts from (HTML page engine, Playwright capture, ffmpeg render)
 tests/                                     tests for the ledger and lite-tier hooks, not shipped with the plugin
 ```
 
@@ -310,14 +307,15 @@ Run the status mod tests (needs Claude Code 2.1.287 or later, the first version 
 claude plugin test plugins/little-planet-factory
 ```
 
-Check the music-video template in a copy, never inside the plugin folder, so no `node_modules` lands in the plugin:
+Check the music-video template in a copy, never inside the plugin folder, so no `.venv`, Chromium download, or `out/` lands in the plugin. It has no npm dependencies, so there's no `pnpm install`:
 
 ```
-cp -R plugins/music-video/skills/remotion-pipeline/template /tmp/mv-template-check
+cp -R plugins/music-video/skills/video-pipeline/template /tmp/mv-template-check
 cd /tmp/mv-template-check
-pnpm install
-pnpm typecheck
-pnpm test
+pnpm test           # the fast suite, no browser
+pnpm setup:env      # .venv and headless Chromium, inside the copy
+pnpm check
+pnpm test:render    # real Chromium and ffmpeg; outside the Claude Code sandbox
 ```
 
 Test locally from a clone:

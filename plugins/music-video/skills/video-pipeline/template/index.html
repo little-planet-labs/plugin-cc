@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Music video</title>
+<link rel="icon" href="data:,">
+<!--
+  The video as a time-seeked page. Captured frame by frame by scripts/capture.py
+  (index.html?render=1): frame n is the page after window.__mv.seek(n / fps).
+  Open it through `pnpm serve` for the interactive preview (ES modules don't
+  load from file://). Query: render=1, textonly=1, scenes=<module>, t=<seconds>.
+  Layer stack: #world (z1) < #fx (z2) < #txt (z3, lyrics only) < #over (z4).
+-->
+<style>
+html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+#stage { position: relative; overflow: hidden; contain: strict; }
+#world, #fx, #txt, #over { position: absolute; left: 0; top: 0; overflow: hidden; }
+#world { z-index: 1; }
+#fx { z-index: 2; pointer-events: none; }
+#txt { z-index: 3; }
+#over { z-index: 4; pointer-events: none; }
+#hud { position: fixed; left: 12px; bottom: 16px; z-index: 99; display: none; padding: 6px 10px; border-radius: 6px;
+  font: 600 14px/1.4 ui-monospace, Menlo, monospace; color: #fff; background: rgba(0, 0, 0, 0.6); }
+#scrub { position: fixed; left: 0; right: 0; bottom: 0; height: 8px; z-index: 98; display: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.15); }
+#scrub i { display: block; height: 100%; width: 0; background: #fff; }
+#err { position: fixed; left: 12px; top: 12px; right: 12px; z-index: 100; display: none; padding: 10px 12px; white-space: pre-wrap;
+  font: 600 15px/1.4 ui-monospace, Menlo, monospace; color: #fff; background: #a1121a; }
+</style>
+<script>
+  // window.__mv exists from the first script on, so capture code can wait for
+  // `ready || error`; src/engine/main.js fills it in. A script that fails to
+  // load or throws during boot sets `error` here instead of hanging the capture.
+  window.__mv = {
+    ready: false, error: null, fps: null, width: null, height: null, duration: null, frames: null, warnings: [],
+    seek: function () { return Promise.reject(new Error(window.__mv.error || 'page not ready')); },
+    subframes: function () { return []; },
+    cuts: function () { return []; },
+    blurWindows: function () { return []; },
+    lines: function () { return []; },
+  };
+  window.seek = function (t) { return window.__mv.seek(t); };
+  window.addEventListener('error', function (e) {
+    if (!window.__mv.ready && !window.__mv.error) window.__mv.error = 'page script error: ' + (e.message || 'unknown');
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    if (!window.__mv.ready && !window.__mv.error) window.__mv.error = 'page error: ' + ((e.reason && e.reason.message) || e.reason);
+  });
+</script>
+</head>
+<body>
+<div id="stage"><div id="world"></div><div id="fx"></div><div id="txt"></div><div id="over"></div></div>
+<div id="hud"></div>
+<div id="scrub"><i></i></div>
+<div id="err"></div>
+<script type="module" src="src/engine/main.js" onerror="window.__mv.error = window.__mv.error || 'src/engine/main.js (or a module it imports) failed to load'"></script>
+</body>
+</html>

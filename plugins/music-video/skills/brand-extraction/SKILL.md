@@ -1,12 +1,12 @@
 ---
 name: brand-extraction
-description: How the music-video company researcher pulls a company's brand into a video project. Covers finding colour and type tokens in a design-system repo or, without one, in the website's CSS; mapping them onto the src/brand.json schema; capturing a vivid secondary or marketing palette with contrast warnings when the brief wants colour; checking the font licence and falling back to a Google font through @remotion/google-fonts; finding the logo SVG, quoting the brand's logo usage rules, and baking it into on-dark and on-light variants with no CSS variables left; and citing a source for every token. Use when writing src/brand.json or public/brand/ for a music video.
+description: How the music-video company researcher pulls a company's brand into a video project. Covers finding colour and type tokens in a design-system repo or, without one, in the website's CSS; mapping them onto the src/brand.json schema; capturing a vivid secondary or marketing palette with contrast warnings when the brief wants colour; checking the font licence and falling back to a Google font that pnpm fonts can download; finding the logo SVG, quoting the brand's logo usage rules, and baking it into on-dark and on-light variants with no CSS variables left; and citing a source for every token. Use when writing src/brand.json or public/brand/ for a music video.
 user-invocable: false
 ---
 
 # Brand extraction
 
-The video's colours, type, and logo come from the company's real brand, and every value says where it came from. You write `src/brand.json`, `public/brand/logo.svg` and its variants, and a **Brand** section in `creative/research.md`. `theme.ts` reads `brand.json`; scenes never hard-code a brand value.
+The video's colours, type, and logo come from the company's real brand, and every value says where it came from. You write `src/brand.json`, `public/brand/logo.svg` and its variants, and a **Brand** section in `creative/research.md`. The video's engine builds its theme (`ctx.theme`, in the project's `src/engine/theme.js`) from `brand.json`, and `pnpm fonts` downloads its Google fonts; scenes never hard-code a brand value.
 
 ## Find the tokens
 
@@ -69,7 +69,7 @@ rg -n --glob '!**/node_modules/**' -i '@font-face|fontFamily|font-family' <repo>
 
 Use the source's exact hex values; never adjust or invent a colour to fill a slot. When the brand has no candidate for a slot, reuse the nearest real token and say so in the Brand section.
 
-`brand.json` takes only these keys; the schema in `src/lib/brand.ts` rejects anything else.
+`brand.json` takes only these keys (plus an optional `"$comment"`); the schema in the project's `src/lib/brand.js` rejects anything else, naming the field. Every logo path starts with `public/`. `pnpm check` in the project validates the file.
 
 Check contrast before writing the file (WCAG relative luminance):
 
@@ -81,7 +81,7 @@ node -e 'const L=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map
 
 A product UI is often muted: greys, one brand colour, and status colours. When `brief.visualStyle` asks for colour, or the tone calls for it, also capture the brand's **secondary or marketing palette**: the ramps on its brand site, product launch pages, and marketing illustrations, and the UI's status colours. One run's brand site had full ramps (purple, blue, green, orange, lime) that its product UI never shows, and those ramps carried the video.
 
-- Put them in a **Vivid palette** table in the Brand section of `research.md`: name, hex, what it's for on the source (a product, a status, a campaign), and its source, labelled like every other token. They don't go in `brand.json`; the director adds the ones it uses to `theme.ts` as tokens.
+- Put them in a **Vivid palette** table in the Brand section of `research.md`: name, hex, what it's for on the source (a product, a status, a campaign), and its source, labelled like every other token. They don't go in `brand.json`; the director copies the ones it uses into a tokens module beside its scenes, with their sources.
 - **Contrast warnings.** Run the contrast check on the pairs a video would use: white and the darkest step on each colour, and each colour on `background`. List every pair under 4.5:1 for body text (3:1 for hits of 160 px and up) as a warning ("white on lime #D3FA37: 1.2, use dark text").
 
 ## Fonts and licences
@@ -90,15 +90,15 @@ Having the font files doesn't mean the company may render them into a video. Kiz
 
 - **Google font** (served from Google Fonts, or listed on fonts.google.com): `"source": "google"`. Use it.
 - **Commercial or unknown licence** (Typekit/Adobe Fonts, a foundry licence, files with no licence text): don't embed it. Pick a Google font with the same structure and record both names. Suggested pairings, a matter of taste rather than metrics: geometric sans (Proxima Nova, Gotham, Circular) to Montserrat or Figtree; humanist sans to Open Sans or Source Sans 3; grotesk (Helvetica, Graphik) to Inter; transitional serif to Source Serif 4.
-- **`"source": "local"`** only when the licence text in the repo explicitly allows embedding in rendered media, and the user confirms. Copy the files under `public/fonts/` and list them in the font's `files` map, weight to path (`{"400": "public/fonts/Brand-Regular.woff2"}`); every weight in `files` must also be in `weights`. `src/lib/brand.ts` in the project is the schema.
+- **`"source": "local"`** only when the licence text in the repo explicitly allows embedding in rendered media, and the user confirms. Copy the files to `public/brand/fonts/` (not `public/fonts/`, which `pnpm fonts` manages) and list them in the font's `files` map, weight to path (`{"400": "public/brand/fonts/Brand-Regular.woff2"}`); every weight in `files` must also be in `weights`. `src/lib/brand.js` in the project is the schema.
 
-Confirm the Google family exists in `@remotion/google-fonts` at the project's pinned Remotion version, and which weights it has. Run in the project:
+A Google family must exist under that exact name, with every listed weight, in the Google Fonts CSS2 API: the project's `pnpm fonts` downloads from it and fails naming a family or weight it can't get, and the page then refuses to boot without the files. Check before you write the file:
 
 ```sh
-node --input-type=module -e "const m = await import('@remotion/google-fonts/Montserrat'); console.log(m.getInfo().fontFamily, Object.keys(m.getInfo().fonts.normal))"
+curl -sS -o /dev/null -w '%{http_code}\n' 'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;600;800'
 ```
 
-The module name is the family without spaces. `ERR_MODULE_NOT_FOUND` means the family isn't in the package. List only weights the command printed.
+`200` means the family and every weight exist; anything else means one of them doesn't, so drop that weight or pick another family. Spaces in a family name become `+`. List only weights that pass. The lead runs `pnpm fonts` after you report; you don't write `public/fonts/`.
 
 ## Logo
 

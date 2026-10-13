@@ -44,7 +44,7 @@ Both `.txt` files are plain text: tags on their own lines, one sung line per lin
 - Delivery cues in their own brackets on the next line: `[Playful]`, `[Building, serious]`, `[Gang vocals]`, `[Half-time, dramatic, soaring]`, `[Playful, stop-time]`. A cue may also sit mid-section where the delivery changes.
 - No `[Spoken]`, `[Spoken word]`, or `[Rap]` unless `brief.vocals` is `"spoken-ok"`.
 - No `[Instrumental]`, `[Solo]`, `[Break]`, `[Drop]`, or `[Build]` sections. Suno adds instrumental stretches on its own, and the pipeline detects them.
-- **The tags define the video's sections.** `pnpm align` turns each section tag into a section id (`[Verse 1]` → `verse-1`; an unnumbered kind that repeats → `chorus-1`, `chorus-2`) and each line into `<sectionId>-<n>`. So number your verses, and never start a delivery cue with a section kind (intro, verse, pre-chorus, chorus, post-chorus, hook, refrain, bridge, breakdown, outro, end, instrumental, interlude, break, solo, drop, build): `[Build, serious]` becomes a section, `[Building, serious]` stays a cue. `music-video:remotion-pipeline` has the full rule.
+- **The tags define the video's sections.** `pnpm align` turns each section tag into a section id (`[Verse 1]` → `verse-1`; an unnumbered kind that repeats → `chorus-1`, `chorus-2`) and each line into `<sectionId>-<n>`. So number your verses, and never start a delivery cue with a section kind (intro, verse, pre-chorus, chorus, post-chorus, hook, refrain, bridge, breakdown, outro, end, instrumental, interlude, break, solo, drop, build): `[Build, serious]` becomes a section, `[Building, serious]` stays a cue. `music-video:video-pipeline` has the full rule.
 
 ### Respelling names for the sung file
 

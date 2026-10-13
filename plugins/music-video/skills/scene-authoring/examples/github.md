@@ -10,7 +10,7 @@ One static look for the whole song: a full-bleed wall of rounded contribution-gr
 
 ## The concept round
 
-Three concepts, each its own composition under `src/concepts/<slug>/`, shared code in `src/components/concept-kit/`, `src/scenes/` untouched:
+Three concepts, each built apart from the main scenes, which stayed untouched:
 
 | Concept | Pitch |
 |---|---|
@@ -50,7 +50,7 @@ A later 4K rebuild was briefed that one visual system for a whole song is repeti
 - **Options sheets for one element.** The user disliked the mascot in a rounded app-icon tile. Three freestanding treatments (layered illustration, glass, neon line art) went out as an in-context sheet with short clips, and glass won, without re-rendering the video to find out.
 - **A text layer nothing touches.** Held lyrics shimmered until springs settled to exactly 1, the lyrics left the camera and punch wrappers, and the grain moved below the text: background, then grain and vignette, then lyrics.
 - **The motif where it's sung.** The contribution grid appears once, on its own line, and lands harder for it.
-- **A PNG-frame master** (`--image-format=png`) for text-heavy shots over gradients: about 650 MB and 50% slower, and clean type.
+- **PNG captures for the master.** JPEG captures rang around type over gradients; PNG frames gave clean type for about 50% more render time (about 650 MB for 4:23 then). Since 1.0.0, masters capture PNG by default.
 
 ## What the howseen comparison taught
 
@@ -59,3 +59,11 @@ The user then watched a run of howseen-ai/claude-motion-design (262 s, 39 scenes
 - **Text-led transitions.** Here, whips blurred and slid the held lyric with the frame, zooms scaled and blurred it, and the iris covered it while held. There, each line left with its own exit on schedule, a world-only reveal ran underneath in the direction the words left, and the next line rode above it.
 - **Hard cuts on the biggest hits.** 7 there, each with a push-in peaking into the cut, against 1 here. Transitions ran 0.38 to 0.5 s.
 - **A separate critic.** That run's critic scored its two drafts hook 2, readability 5, motion 4, variety 6, composition 6, accuracy 7, sync 8, then 3, 5, 6, 7, 5, 7, 8, and caught collisions, dead stretches, crops, and a strobe the builder had missed.
+
+## 1.0.0: the engine change
+
+The user later judged the video built the howseen way (a time-seeked HTML page captured frame by frame with Playwright and encoded with ffmpeg) better than the Remotion build. What held it back came from our side: a rule in our brief that each scene be distinct and not match the others, the "A new world per line" mistake above. So version 1.0.0:
+
+- **Replaced Remotion** with a page engine adapted from howseen's and from our earlier adaptation of it (credited in the template's `NOTICE.md`): a layer stack that keeps the lyrics apart from the world, lyric entrances and exits with the exit rule built in, transitions, hard cuts and subframe motion-blur windows declared by the scenes, 4K masters with the render pool capped at 2, and QA on the page and the renders (stills before video, critique sheets, the pops and flash scan, the held-text still-test).
+- **Brought over the rest of its method** into the scene-authoring skill: reference first, cut seams at peak velocity, the incoming shot already moving, blur only on slam moves and never on text being read, caption timing, and a version log next to the critic loop.
+- **Kept our own parts:** the Suno song and its rules, the audio analysis and lyric alignment, the beat map, the concept round, the critic, and one unifying visual system per video, varied inside it.

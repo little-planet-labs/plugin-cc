@@ -1,0 +1,8 @@
+node_modules/
+out/
+.venv/
+.venv-align/
+.cache/
+__pycache__/
+*.pyc
+.DS_Store
