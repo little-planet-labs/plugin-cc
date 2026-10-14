@@ -156,11 +156,14 @@ export const concatArgs = (listFile, fps, out) => [
  * startSeconds + durationSeconds) with durationSeconds = frames / fps, cut on
  * the input side, so it never runs past the video (on an analysed track a
  * full render trims nothing: frames = ceil(duration * fps)). No -shortest, no
- * filters on the audio.
+ * filters on the audio, except `pad`: when the span runs past the end of the
+ * source (pipeline.json tailSeconds), `apad=whole_dur` appends digital silence
+ * after the last source sample until the audio is exactly durationSeconds long.
+ * It only appends: the source samples are not resampled, scaled or moved.
  * @param {{video: string, audio: string | null, audioBitrate: string, fps: number, out: string,
- *   startSeconds?: number, durationSeconds?: number}} o durationSeconds: required with audio (a silent mux has nothing to cut).
+ *   startSeconds?: number, durationSeconds?: number, pad?: boolean}} o durationSeconds: required with audio (a silent mux has nothing to cut).
  */
-export const muxArgs = ({video, audio, audioBitrate, fps, out, startSeconds = 0, durationSeconds}) => {
+export const muxArgs = ({video, audio, audioBitrate, fps, out, startSeconds = 0, durationSeconds, pad = false}) => {
   if (audio !== null && !(Number.isFinite(durationSeconds) && durationSeconds > 0)) {
     throw new CliError(`muxArgs needs the video's duration to cut the audio (got ${durationSeconds})`);
   }
@@ -169,7 +172,11 @@ export const muxArgs = ({video, audio, audioBitrate, fps, out, startSeconds = 0,
     '-t', durationSeconds.toFixed(6),
     '-i', audio,
   ];
-  const audioOut = audio === null ? [] : ['-map', '1:a:0', '-c:a', 'aac', '-b:a', audioBitrate];
+  const audioOut = audio === null ? [] : [
+    '-map', '1:a:0',
+    ...(pad ? ['-af', `apad=whole_dur=${durationSeconds.toFixed(6)}`] : []),
+    '-c:a', 'aac', '-b:a', audioBitrate,
+  ];
   return [
     '-v', 'error', '-y',
     '-i', video,

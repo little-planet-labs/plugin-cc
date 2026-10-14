@@ -1,12 +1,12 @@
 ---
 name: scene-authoring
-description: How the music-video director designs and builds a video's scenes on the HTML page engine. Covers creative/direction.md (a named reference, one unifying visual system varied inside it) and the per-line beat map before any code, the concept round as alternate scene registries, the timing contract, the layer stack, lyrics through ctx.lyric with designed exits, text-led transitions, cut seams and subframe motion blur, motion and spring rules, pacing (the 0.5 s hook and the 4 s change rule), beat pulsing only where the track pounds or the brief asks, readability and caption rules, safe areas, on-screen copy, determinism and capture hygiene, the one-shot build, and the draft rounds (stills, critique sheets, pops, still-test, jitter) that feed the critic loop, with machine-load limits and known pitfalls. Use when writing direction.md, beatmap.md, concepts.md, or anything under src/scenes/ or src/concepts/.
+description: How the music-video director designs and builds a video's scenes on the HTML page engine. Covers creative/direction.md (a named reference, one unifying visual system varied inside it) and the per-line beat map before any code, the concept round as alternate scene registries, the timing contract, the layer stack, lyrics through ctx.lyric with designed exits, text-led transitions, cut seams and subframe motion blur, motion and spring rules, pacing (the 0.5 s hook and the 4 s change rule), beat pulsing only where the track pounds or the brief asks, readability and caption rules, safe areas, on-screen copy, determinism and capture hygiene, the one-shot build, and the draft rounds (stills, critique sheets, pops, still-test, jitter) that feed the critic loop, with machine-load limits and known pitfalls. Also covers the vertical 9:16 version as a parallel registry (the direction-vertical.md addendum, safe areas for the Reels and TikTok overlays, per-line row breaks, a setup-time safe-area guard, restaging, clip-friendly openings, seams, the outro inside a short tail, and the clip list) and the cover posters. Use when writing direction.md, beatmap.md, concepts.md, direction-vertical.md, src/clips.vertical.json, or anything under src/scenes/, src/concepts/, src/scenes-vertical/ or src/posters/.
 user-invocable: false
 ---
 
 # Scene authoring
 
-The pipeline is shared; the look is not. Every video gets its own visual language, designed before any code and built in one pass. Load `music-video:video-pipeline` alongside this skill: it documents the page engine, the scene API (`ctx`), every script and flag, the data files, and the gotchas. This skill is how to use them well. `examples/kizen.md` and `examples/github.md` are finished examples. **Don't copy their looks.**
+The pipeline is shared; the look is not. Every video gets its own visual language, designed before any code and built in one pass. Load `music-video:video-pipeline` alongside this skill: it documents the page engine, the scene API (`ctx`), every script and flag, the data files, and the gotchas. This skill is how to use them well. `examples/kizen.md`, `examples/github.md` and `examples/jira.md` are finished examples; `examples/jira.md` also shows a vertical adaptation. **Don't copy their looks.**
 
 The engine and much of the method below are adapted from howseen-ai/claude-motion-design (MIT; see the template's `NOTICE.md`).
 
@@ -258,6 +258,7 @@ From `ctx.theme.safe`, at 1080p:
 
 - Keep all text inside action-safe: 96 px from the left and right edges, 54 px from the top and bottom (`safe.action`).
 - Keep lyrics and the logo inside title-safe: 192 px and 108 px (`safe.title`). The lyric layout defaults to it. Players draw controls over the bottom of the frame.
+- On the vertical page, lyrics and the logo also stay inside `safe.social`, the Reels and TikTok overlays. See "The text box" in section 6.
 
 ### On-screen copy
 
@@ -334,6 +335,138 @@ Each round `n`:
 
 When it looks wrong, the video-pipeline skill's symptom table names the usual cause: stutter (a clock or kept state), shimmer, cheap bounce, grey slabs, a quarter-size canvas, washed-out colour, late audio, a pop at a section start, lines overlapping in a swap.
 
+## 6. The vertical version
+
+When the brief asks for a full-length vertical 9:16 version or for shorts (`brief.social`), you adapt the approved landscape direction to a 1080x1920 page for Instagram Reels and TikTok. Shorts are cut from the vertical master, so they need this too. It's a native re-layout for a phone held upright, never a crop or a letterbox. The video-pipeline skill's "Pipeline configs and the vertical version" covers the config, the type scale and the safe areas.
+
+### direction-vertical.md first
+
+Write `creative/direction-vertical.md` before any vertical code and stop for approval. It's an addendum to the approved `direction.md`, not a new direction: the world, material, type system, palette logic, motion language, characters, humour and copy limits carry over, and wherever the addendum is silent the landscape direction applies. It contains:
+
+1. **Summary:** what changes for the tall frame and why, in about three sentences.
+2. **The frame:** a diagram of the 1080x1920 page with the app's overlay zones, the text box, the lyric column, and where the world shows.
+3. **The vertical grid:** where the world sits at rest, the camera per section, and every set piece that's restaged.
+4. **Type:** each type composition's size and position, and a row-break table for every line with its measured widths.
+5. **Clips:** the transitions that change so every clip opens and ends cleanly, and the clip edges table: each clip's seconds, frames, first frame and last frame.
+6. **The first and last 0.5 s of every section**, since those are the frames a clip or a seam shows.
+7. **The outro inside the tail.**
+8. **Lyric timing changes** against the landscape build, line by line.
+9. **The code plan:** the files to write, the landscape modules imported read-only, and the ones not imported and why.
+10. **Decisions for the user:** the clip-friendly transitions and the restaging choices, each with options.
+
+When there are shorts, also write the first `src/clips.vertical.json` from the picks in `brief.social.clips` (see Clip edges).
+
+### The text box
+
+On a portrait page, every lyric, every sung label, the logo and every prop that carries a joke sit inside both `theme.safe.title` and `theme.safe.social`. Their intersection is the text box. With the template's theme at 1080x1920 it's x 108 to 920 and y 220 to 1500: the app's header covers the top 220 px, its like, comment and share column the right 160, and its caption, audio row and tab bar the bottom 420. Set the lyric column a little inside it, for glyph bearings. Derive the box from `ctx.theme.safe` in code, never from typed numbers. `safe.social` is an estimate of the overlays, so the lead tells the user to check one real upload.
+
+- The text box sits left of the frame centre, because the right column is wider than the left inset. Centre stage-like compositions on the text box's centre, not on `W / 2`.
+- Below and beside the text box goes only world texture: more of the world, light, things sinking out of frame. Nothing there has to be read.
+
+### Type and row breaks
+
+`theme.sizes` are the landscape px values on the portrait page, so type is about 1.8 times larger relative to the frame width. A direction may set its sizes a little smaller in px and still read bigger than landscape.
+
+- **Give every line explicit row breaks** (`breaks`, the word indices that start a row) at phrase boundaries. `balance` alone breaks a 1080 px-wide column in odd places.
+- **Measure them** with the brand font at 1080 wide: Pillow from `.venv` on the project's own `public/fonts/*.woff2`, at the line's weight, size and tracking, with any capsule or padding counted, against the column width minus a margin of about 24 px. Chrome lays text out a few px differently, so a row that overflows in the rendered layout drops to the smaller size or gets a different break.
+- Repeated lines share one set of breaks, and no row is a single stranded word.
+- Plan for up to four rows per block, and keep the block's bottom clear of whatever the world stages below it.
+
+### The guard
+
+Put a setup-time guard in the registry's frame module that throws when a lyric block leaves the text box, and call it in `setup` for every line you register. A boot error stops `still`, `draft` and `render`, so a layout change can't slip text under the app's UI. For a top-anchored block:
+
+```js
+export const textBox = (ctx) => {
+  const {social, title} = ctx.theme.safe;
+  return {
+    x0: Math.max(social.left, title.x), x1: ctx.width - Math.max(social.right, title.x),
+    y0: Math.max(social.top, title.y), y1: ctx.height - Math.max(social.bottom, title.y),
+  };
+};
+
+export const assertInText = (ctx, id, style, rows) => {
+  const b = textBox(ctx);
+  const bottom = style.y + rows * style.size * (style.lineHeight ?? 1.12);
+  if (style.x < b.x0 || style.x + style.w > b.x1 || style.y < b.y0 || bottom > b.y1) {
+    throw new Error(`lyric "${id}" block x ${style.x}-${style.x + style.w}, y ${style.y}-${Math.round(bottom)} leaves the text box x ${b.x0}-${b.x1}, y ${b.y0}-${b.y1}`);
+  }
+};
+```
+
+`rows` is the line's break count plus one. Adapt the bottom for centre or bottom anchors. The guard is an estimate from the line height; the stills check the real glyphs.
+
+### The camera and restaging
+
+- **The world camera needs its own framing.** A board, a map or a set laid out for 16:9 needs a different zoom on the tall frame, a rest position computed for each section's starting zoom, and often per-section or per-line framing. Re-tune the travel per line rather than copying the landscape's numbers.
+- **Restage wide set pieces.** Anything laid out in one long row (a line-up, a timeline, a row of props) doesn't fit 1080 px. Restage it in depth or in rows, keeping the move and its timing. In the Jira run, a kick line of seven cards became risers: three in front and four behind.
+- **Re-check prop sizes in the stills.** The 200 px rule for a joke's prop still holds, and a prop scaled down to fit the narrow frame can fall under it.
+
+### Clip-friendly openings and endings
+
+A landscape transition that starts before a section boundary (a whip, bars, any transition whose `at` falls before the section start) puts a clip that starts on that boundary in the middle of the transition, showing the previous section. At every clip edge:
+
+- **The first frame is a deliberate opening.** Replace a straddling transition with an opening that reads as a first frame: an act curtain that closes at the end of one section and parts on the next, or a hard cut onto a composed frame. Which one, and where, is the user's decision at the approval stop; offer the options.
+- **The last frame holds the segment's last sung line whole,** before the next section's incoming transition starts. `exit: 'cut'` on that line leaves it held until the boundary.
+- **Openings and endings inside a clip stay free.** Hard cuts and push-ins into a chorus are fine where no clip edge falls.
+
+### Clip edges
+
+`src/clips.vertical.json` is yours (the video-pipeline skill's "Clips" has the schema). Tune each edge to your staging:
+
+- End just after the segment's last sung line, with it still held and before the next section's incoming transition.
+- Start on the first frame of the opening you designed, before the first sung word.
+- Check words on a boundary in `lyrics.json`: a last word aligned a few frames before the next section starts belongs to the earlier clip, so the edge moves past it. In the Jira run, "before!" was aligned 2 frames before verse 2, so clip 1's end and clip 2's start moved to 50.6 s.
+- Give every clip a `note` saying what its first and last frame show, with the frames.
+
+### Seams
+
+Where one section hands a composed frame to the next (a shut curtain, a held set), draw it in both with the same function and the same parameters, so the seam frame is pixel-identical. Then it needs no transition and no cut, and `pops` stays clean. If the two sides differ by a pixel, it's a pop: make them identical, or declare a cut.
+
+### The outro inside a short tail
+
+The vertical config's tail is short, to keep a full-length cut under the 3:00 Reels cap. A close timed against the end of the video doesn't fit, so landscape close helpers written that way can't be reused. Time the vertical close from `ctx`: start it on the last beat at or before `ctx.audioEnd`, finish it on `ctx.audioEnd`, and hold the finished frame through the tail. Lyrics already end by `ctx.audioEnd`. Keep the no-frozen-frames rule (section 3, "Pacing") alive up to the close.
+
+### The parallel registry
+
+Build `src/scenes-vertical/`, the registry `src/pipeline.vertical.json` names:
+
+| File | Holds |
+|---|---|
+| `index.js` | `SCENES`, `DEFAULT_SCENE = null` once every key has a scene (a stand-in until then; see Build, early look and checks), and a header comment per scene key |
+| `frame.js` | the portrait grid as one source of truth: the text box from `ctx.theme.safe`, the lyric column, the stage axis, the camera rest, coordinate helpers, and the guard |
+| `type.js` | the portrait type compositions, the row-break table, and the per-line sizes |
+| an opener module (`curtain.js` in the Jira run) | the clip-friendly opening, drawn identically on both sides of each seam |
+| `ends.js` | the close inside the tail |
+| one module per scene key | the scenes, re-laid out, with their own per-line plans, camera keys and header comments |
+
+- **Never edit `src/scenes/**` for vertical work.** The landscape video stays byte-identical. A change you'd want in a shared helper goes in a vertical copy.
+- **Import landscape helpers read-only** when they hold no landscape coordinates: drawing that works in world coordinates or takes the size as an argument, utilities, the tokens module. Don't import the landscape scene modules or anything with screen positions in it.
+- **Watch helpers with the same name.** In the Jira run, the concept round's `bare()` didn't lower-case while the scenes' did, so mixing them would have broken word matching silently.
+- **Every sung line is registered exactly once**, as in the landscape registry.
+
+### Build, early look and checks
+
+Every command takes `--pipeline=src/pipeline.vertical.json`. Run `pnpm check` with it after each scene, and plain `pnpm check` too, to confirm the landscape registry still loads. If the project is a git repo, `git status --short src/scenes` must print nothing.
+
+1. **Build the first short's sections first** (or the first hook when there are no shorts), look at stills of its edges, then render that range for an early look: `pnpm render --pipeline=src/pipeline.vertical.json --frames=<a>-<b>` and `pnpm preview --pipeline=src/pipeline.vertical.json --in <that file>`. Stop and report it; the lead shows the user and resumes you. Until every vertical scene exists, `src/scenes-vertical/index.js` keeps a plain stand-in `DEFAULT_SCENE` that registers the lines of the sections not built yet (`for (const line of ctx.lines) ctx.lyric(line.id, {})`), because a render won't start with an unregistered sung line or, with `DEFAULT_SCENE = null`, an unknown scene key. Set it back to null once every key has a scene, before the full draft. Or build the whole registry first and render the early look after, as the Jira run did.
+2. **Build the rest**, then stills at every section start and start + 8, every clip edge frame and the frames either side, the big hits, and the close. Check each still against the text box (yellow, x 108 to 920) and the social-safe area (red) drawn on a scratch copy, never in the video (the template theme's numbers at 1080x1920). Text must sit inside the yellow box:
+
+   ```sh
+   ffmpeg -v error -y -i out/wip-v1/f-<n>.png -vf "drawbox=x=64:y=220:w=856:h=1280:color=red@0.8:t=4,drawbox=x=108:y=220:w=812:h=1280:color=yellow@0.9:t=3" out/wip-v1/f-<n>-safe.png
+   ```
+
+3. **Draft rounds** as in section 5, with `--pipeline` on every command, round tags `v<n>`, and drafts at `out/vertical-draft-v<n>.mp4`. The text-only render is `pnpm render --pipeline=src/pipeline.vertical.json --textonly --scale=1`. Put every clip edge in the extra strips. The lead runs the critic on each round.
+4. **The vertical master** after the critic's ACCEPT, then the preview and contact sheet, and `pnpm clips --pipeline=src/pipeline.vertical.json` when there are shorts.
+
+## 7. Cover posters
+
+Cover posters are YouTube thumbnails: new compositions in the video's style, made to be read at 168 px wide, never frames lifted from the video. Each one is a single idea from the video (a hero prop, the hook's gag, the stage), big and simple, with the song title large where it appears.
+
+- Build them as the alternate registry `src/posters.js` with the modules in `src/posters/` (the video-pipeline skill's "Posters" has the shape), on the 1920x1080 landscape page. Replace the template's placeholder entry and scene: one `POSTERS` entry per poster and your poster scene as `DEFAULT_SCENE`. Import world helpers read-only.
+- On-screen text: the song title, sung lyrics and exact feature names only, and the logo only as `brief.logoUse` allows. Register every lyric line hidden.
+- Run `pnpm posters`, then open `posters/posters-sheet.png` and `posters/posters-small.png`. At 168 px the title must still read and the idea must still show; fix any poster where it doesn't before you report.
+
 ## Known pitfalls
 
 From the Kizen run:
@@ -357,3 +490,11 @@ From the howseen comparison (`examples/github.md`):
 - **Lyrics carried by world transitions.** Whips blurred and slid the held lyric, zooms scaled and blurred it, and an iris covered it while held. The layer stack now keeps them apart; see "Text-led transitions".
 - **Too few hard cuts.** One hard cut in a 4:23 song, against 7 in the howseen run, put on the stop-time hits and the key change with a push-in peaking into the cut.
 - **Builder-only review.** Still checks by the builder missed collisions, crops, dead stretches, and a strobe that a separate critic caught in its first round. See section 5.
+
+From the Jira run's vertical version (`examples/jira.md`):
+
+- **Transitions straddling clip starts.** The landscape whips and bars into three verses started before the section starts, so clips cut there would have opened mid-whip on the previous chorus. They became act curtains in the vertical.
+- **A word sung on the boundary.** A chorus's last word was aligned 2 frames before the next section, so a clip edge on the section boundary would have shown it for 2 frames. The edge moved.
+- **A seven-wide line-up.** Seven chorus cards in one row needed 1654 px; they were restaged on risers.
+- **A prop shrunk to a speck.** A card scaled down for the narrow frame read as a speck at 143 px in the stills and was enlarged to about 198 px.
+- **A close that can't fit the tail.** The landscape close ran 1.4 s past the audio; with a 0.3 s tail it had to be retimed to finish on the audio end.

@@ -137,7 +137,7 @@ describe('output safety', () => {
 describe('render arguments', () => {
   it('parses every flag in both forms and rejects unknown, repeated and malformed ones', () => {
     const o = parseRenderArgs(['--out', 'out/a.mp4', '--scale=1', '--crf', '20', '--preset=slow', '--pool=1', '--chunk-seconds=5', '--frames=10-20', '--textonly', '--scenes=./tests/x.js']);
-    assert.deepEqual(o, {out: 'out/a.mp4', scale: 1, crf: 20, preset: 'slow', pool: 1, chunkSeconds: 5, frames: {a: 10, b: 20}, textonly: true, scenes: 'tests/x.js'});
+    assert.deepEqual(o, {out: 'out/a.mp4', scale: 1, crf: 20, preset: 'slow', pool: 1, chunkSeconds: 5, frames: {a: 10, b: 20}, textonly: true, scenes: 'tests/x.js', pipeline: 'src/pipeline.json'});
     assert.deepEqual(parseRenderArgs(['--frames=7']).frames, {a: 7, b: 7});
     assert.throws(() => parseRenderArgs(['--nope']), /unexpected argument "--nope"/);
     assert.throws(() => parseRenderArgs(['--crf=1', '--crf=2']), /--crf given twice/);

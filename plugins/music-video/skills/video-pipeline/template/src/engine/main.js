@@ -1,8 +1,9 @@
 // Page entry: reads the query (render=1, textonly=1, scenes=<module>,
-// t=<seconds>), boots the engine and fills window.__mv (the interface the
+// pipeline=<config>, t=<seconds>), boots the engine and fills window.__mv (the interface the
 // capture scripts drive; index.html creates it with ready false). Any boot
 // failure sets window.__mv.error with a plain reason and leaves ready false.
 // The preview HUD (the only clock) loads only without render=1.
+import {DEFAULT_PIPELINE_PATH, validatePipelinePath} from '../lib/pipeline.js';
 import {validateScenesPath} from '../lib/registry.js';
 import {createEngine} from './engine.js';
 
@@ -25,8 +26,12 @@ const fail = (err) => {
 };
 
 try {
-  const scenesPath = validateScenesPath(q.get('scenes') ?? 'src/scenes/index.js');
-  const engine = createEngine({render, textonly, scenesPath, scenesUrl: new URL(scenesPath, document.baseURI).href});
+  // Both paths are validated here, before anything is fetched: the page never reads outside src/ for its config.
+  const pipelinePath = validatePipelinePath(q.get('pipeline') ?? DEFAULT_PIPELINE_PATH);
+  const scenesQuery = q.get('scenes');
+  // null: the config's `scenes`, else src/scenes/index.js (resolved once the config is loaded).
+  const scenesPath = scenesQuery === null ? null : validateScenesPath(scenesQuery);
+  const engine = createEngine({render, textonly, pipelinePath, scenesPath, toUrl: (path) => new URL(path, document.baseURI).href});
   const t0 = render ? 0 : Math.max(0, Number.parseFloat(q.get('t') ?? '0') || 0);
   await engine.boot(t0);
   Object.assign(mv, engine.info);

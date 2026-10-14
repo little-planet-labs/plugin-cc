@@ -1,4 +1,4 @@
-// `pnpm preview [--in <mp4>] [--out <mp4>]`
+// `pnpm preview [--in <mp4>] [--out <mp4>] [--pipeline=<config>]`
 //
 // A 720p H.264 + AAC copy of a render that stays under chat upload limits
 // (30 MB). The video bitrate is computed from the duration so the file lands
@@ -10,16 +10,22 @@
 // sample-aligned (tests/render/render-av-sync.test.mjs measures it).
 // Defaults: in = out/<outputName>.mp4 (the master), out = the input's name
 // with "-preview" (out/<outputName>-preview.mp4). The preview never
-// overwrites the master.
+// overwrites the master of any pipeline config. --pipeline=<config> (default
+// src/pipeline.json) picks whose master is the default input:
+// src/pipeline.vertical.json previews out/music-video-vertical.mp4 into
+// out/music-video-vertical-preview.mp4. "720p" is the short side: a landscape
+// (or square) input gets 720 lines (1280x720 from 16:9), a portrait one 720
+// columns (720x1280 from 9:16), with the same bitrate budget (it depends only on
+// the duration) and the same 30 MB check.
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {parsePipeline} from '../src/lib/pipeline.js';
+import {DEFAULT_PIPELINE_PATH} from '../src/lib/pipeline.js';
 import {capture, CliError, run, runCli} from './lib/cli.mjs';
 import {BT709_FRAME_TAGS, x264Args} from './lib/encode.mjs';
-import {masterOutput, refuseMaster, samePath} from './lib/outputs.mjs';
-import {readJson} from './lib/project.mjs';
+import {masterOutput, refuseMasters, samePath} from './lib/outputs.mjs';
+import {knownMasters, parsePipelineFlag, readPipelineAt} from './lib/project.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,13 +38,28 @@ export const PREVIEW_AUDIO_KBPS = 128;
 export const PREVIEW_MAX_VIDEO_KBPS = 6000;
 /** Below this, 720p kinetic type turns to mush: refuse rather than ship it. */
 export const PREVIEW_MIN_VIDEO_KBPS = 300;
-/** Preview height in px. */
+/** The preview's short side in px: its height for a landscape or square input, its width for a portrait one. */
 export const PREVIEW_HEIGHT = 720;
 /** Share of the byte budget left for MP4 container overhead. */
 const CONTAINER_OVERHEAD = 0.02;
 
 /** TV-range BT.709 in, TV-range BT.709 out, scaled to 720 lines (width keeps the aspect, even). */
 export const PREVIEW_FILTER = `scale=-2:${PREVIEW_HEIGHT}:in_range=tv:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709,format=yuv420p,${BT709_FRAME_TAGS}`;
+
+/** The same for a portrait input: 720 columns wide (height keeps the aspect, even). */
+export const PREVIEW_FILTER_PORTRAIT = `scale=${PREVIEW_HEIGHT}:-2:in_range=tv:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709,format=yuv420p,${BT709_FRAME_TAGS}`;
+
+/**
+ * The preview's size and scale filter for a width x height input: the short side becomes PREVIEW_HEIGHT and
+ * the long side keeps the aspect, rounded to an even number (what the -2 in the filter gives). A landscape or
+ * square input is 720 lines high (PREVIEW_FILTER, as always); a portrait one is 720 wide (PREVIEW_FILTER_PORTRAIT).
+ * @param {{width: number, height: number}} input
+ * @returns {{width: number, height: number, filter: string}}
+ */
+export const previewSize = ({width, height}) =>
+  height > width
+    ? {width: PREVIEW_HEIGHT, height: 2 * Math.round((height * PREVIEW_HEIGHT) / width / 2), filter: PREVIEW_FILTER_PORTRAIT}
+    : {width: 2 * Math.round((width * PREVIEW_HEIGHT) / height / 2), height: PREVIEW_HEIGHT, filter: PREVIEW_FILTER};
 
 /**
  * Video and audio bitrates (kbps) that put a `durationSeconds` preview near
@@ -76,30 +97,32 @@ const flagValue = (argv, i, name) => {
 };
 
 /**
- * `--in`, `--out` (either form); everything else is rejected. Paths resolve against `root`. The output must
- * end in .mp4, differ from the input, and never be the master out/<outputName>.mp4 (case-insensitive).
+ * `--in`, `--out`, `--pipeline` (either form); everything else is rejected. Paths resolve against `root`.
+ * The output must end in .mp4, differ from the input, and never be the master out/<outputName>.mp4 of the
+ * config or of any other config (knownMasters; case-insensitive).
  */
 export const parsePreviewArgs = (argv, {root = projectRoot} = {}) => {
   let input = null;
   let output = null;
+  let pipelinePath = null;
   for (let i = 0; i < argv.length; i++) {
     const asIn = flagValue(argv, i, '--in');
     const asOut = asIn ? null : flagValue(argv, i, '--out');
+    const asPipeline = asIn || asOut ? null : flagValue(argv, i, '--pipeline');
     if (asIn) [input, i] = [asIn.value, asIn.next];
     else if (asOut) [output, i] = [asOut.value, asOut.next];
-    else throw new CliError(`unexpected argument "${argv[i]}" (use --in <mp4> and --out <mp4>)`);
+    else if (asPipeline) {
+      if (pipelinePath !== null) throw new CliError('--pipeline given twice; pass it once');
+      [pipelinePath, i] = [parsePipelineFlag(asPipeline.value), asPipeline.next];
+    } else throw new CliError(`unexpected argument "${argv[i]}" (use --in <mp4>, --out <mp4> and --pipeline=<config>)`);
   }
-  let outputName;
-  try {
-    ({outputName} = parsePipeline(readJson(root, 'src/pipeline.json')));
-  } catch (err) {
-    throw new CliError(err.message);
-  }
+  const path = pipelinePath ?? DEFAULT_PIPELINE_PATH;
+  const {outputName} = readPipelineAt(root, path);
   input = resolve(root, input ?? masterOutput(outputName));
   output = resolve(root, output ?? `${input.replace(/\.mp4$/i, '')}-preview.mp4`);
   if (!/\.mp4$/i.test(output)) throw new CliError(`--out must end in .mp4 (got ${output})`);
   if (samePath(output, input)) throw new CliError('--out must differ from --in');
-  refuseMaster(output, root, outputName, 'a preview');
+  refuseMasters(output, root, knownMasters(root, {path, outputName}), 'a preview');
   return {input, output};
 };
 
@@ -134,7 +157,7 @@ export const preview = async ({input, output, ffmpegBin = 'ffmpeg', ffprobeBin =
   if (!existsSync(input)) throw new CliError(`${input} doesn't exist. Run \`pnpm render\` first (or pass --in).`);
   const {duration, fps, width, height} = await probeInput(ffprobeBin, input);
   const {videoKbps, audioKbps} = previewBitrates(duration);
-  const outWidth = 2 * Math.round((width * PREVIEW_HEIGHT) / height / 2);
+  const size = previewSize({width, height});
 
   let tmp = null;
   cleanup.add(() => tmp && rmSync(tmp, {recursive: true, force: true}));
@@ -144,7 +167,7 @@ export const preview = async ({input, output, ffmpegBin = 'ffmpeg', ffprobeBin =
   const partial = join(dirname(output), `.partial-preview-${process.pid}.mp4`);
   cleanup.add(() => rmSync(partial, {force: true}));
 
-  const video = ['-vf', PREVIEW_FILTER, ...x264Args({width: outWidth, height: PREVIEW_HEIGHT, fps, preset: 'medium', bitrateKbps: videoKbps})];
+  const video = ['-vf', size.filter, ...x264Args({width: size.width, height: size.height, fps, preset: 'medium', bitrateKbps: videoKbps})];
   console.log(`preview: ${duration.toFixed(1)} s at ${videoKbps} kbps video + ${audioKbps} kbps audio (two-pass)`);
   await run(
     ffmpegBin,

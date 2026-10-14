@@ -127,9 +127,9 @@ describe('theme and fonts', () => {
 
 describe('pnpm still arguments', () => {
   it('parses frame, t, scale, textonly, scenes and out in both forms', () => {
-    assert.deepEqual(parseStillArgs([]), {frame: null, t: null, scale: 1, textonly: false, scenes: null, out: 'out/still.png'});
+    assert.deepEqual(parseStillArgs([]), {frame: null, t: null, scale: 1, textonly: false, scenes: null, pipeline: 'src/pipeline.json', out: 'out/still.png'});
     assert.deepEqual(parseStillArgs(['--frame=12', '--scale=2', '--textonly', '--scenes=src/scenes/alt.js', '--out', 'out/x.png']), {
-      frame: 12, t: null, scale: 2, textonly: true, scenes: 'src/scenes/alt.js', out: 'out/x.png',
+      frame: 12, t: null, scale: 2, textonly: true, scenes: 'src/scenes/alt.js', pipeline: 'src/pipeline.json', out: 'out/x.png',
     });
     assert.equal(parseStillArgs(['--t', '1.5']).t, 1.5);
     assert.equal(parseStillArgs(['--out=out/y.png']).out, 'out/y.png');

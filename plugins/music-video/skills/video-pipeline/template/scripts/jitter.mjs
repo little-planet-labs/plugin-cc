@@ -1,5 +1,5 @@
-// `pnpm jitter --from <frame | seconds>s --frames <n> [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>]`
-// `pnpm jitter --all-lines [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--scenes=<module>]`
+// `pnpm jitter --from <frame | seconds>s --frames <n> [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--pipeline=<config>]`
+// `pnpm jitter --all-lines [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--scenes=<module>] [--pipeline=<config>]`
 //
 // Measures how much a held picture moves from frame to frame, to catch held
 // lyrics that shimmer (unsettled springs, beat-punch scaling, grain over type).
@@ -44,15 +44,24 @@
 // counted. It exits 1 when no line could be measured. Without a manifest the
 // video must show the whole page (a shorter one is refused as a partial render
 // that lost its sidecar). --all-lines can't be combined with --from or --frames.
+//
+// --pipeline=<config> (default src/pipeline.json) picks the default --in (that
+// config's master, or its text-only render with --all-lines) and, with
+// --all-lines, the config the page is opened with; without it --all-lines
+// uses the config the manifest names (a render with an alternate config
+// records it), else src/pipeline.json. A --pipeline that differs from the
+// manifest's is refused: the schedule would be another video's.
 import {existsSync, mkdtempSync, realpathSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {DEFAULT_PIPELINE_PATH, scenesInEffect} from '../src/lib/pipeline.js';
 import {validateScenesPath} from '../src/lib/registry.js';
 import {capture, CliError, run, runCli} from './lib/cli.mjs';
 import {requireVenvPython} from './lib/env.mjs';
 import {manifestPath} from './lib/outputs.mjs';
-import {defaultMaster, defaultTextonly, holdRange, manifestFor, pageLines, parseFlags, probeVideoInfo} from './lib/qa.mjs';
+import {readPipelineAt} from './lib/project.mjs';
+import {defaultTextonly, holdRange, manifestFor, pageLines, parseFlags, probeVideoInfo, qaInput} from './lib/qa.mjs';
 import {requireCaptureEnv} from './still.mjs';
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -62,23 +71,25 @@ const projectRoot = resolve(scriptsDir, '..');
 export const BLANK_LEVEL = 48;
 /** A line whose mean pair shift is above this, in px, has motion during its hold. */
 export const MOTION_MEAN_PX = 0.01;
-/** The scene registry the page loads when neither --scenes nor a manifest names one. */
+/** The scene registry the page loads when neither --scenes, a manifest nor the config names one. */
 export const DEFAULT_SCENES = 'src/scenes/index.js';
 
 const USAGE =
-  '--from <frame | seconds>s --frames <n> [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>], ' +
-  'or --all-lines [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--scenes=<module>]';
+  '--from <frame | seconds>s --frames <n> [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--pipeline=<config>], ' +
+  'or --all-lines [--in <mp4>] [--crop x,y,w,h] [--max <px>] [--threshold <0-255>] [--scenes=<module>] [--pipeline=<config>]';
 
 /**
  * `--in`, `--from`, `--frames`, `--crop`, `--max`, `--threshold`, each as
  * `--flag value` or `--flag=value`, each at most once. `from` is
  * {frame} or {seconds}; `crop` is null for the whole frame.
  * With `--all-lines`: no --from/--frames; returns {input, allLines: true, crop,
- * max, threshold, scenes} (scenes null: the manifest's, else DEFAULT_SCENES).
+ * max, threshold, scenes, pipeline} (scenes null: the manifest's, else the config's,
+ * else DEFAULT_SCENES; pipeline null: the manifest's, else src/pipeline.json).
+ * `--pipeline` also picks the default --in.
  */
 export const parseJitterArgs = (argv, {root = projectRoot} = {}) => {
   const {values, switches} = parseFlags(argv, {
-    values: ['--in', '--from', '--frames', '--crop', '--max', '--threshold', '--scenes'],
+    values: ['--in', '--from', '--frames', '--crop', '--max', '--threshold', '--scenes', '--pipeline'],
     switches: ['--all-lines'],
     usage: USAGE,
   });
@@ -124,9 +135,9 @@ export const parseJitterArgs = (argv, {root = projectRoot} = {}) => {
         throw new CliError(err.message);
       }
     }
-    // Resolved last, after every check: the default reads src/pipeline.json.
-    const input = values.has('--in') ? resolve(root, values.get('--in')) : defaultTextonly(root);
-    return {input, allLines: true, crop, max, threshold, scenes};
+    // Resolved last, after every check: the default reads the pipeline config.
+    const {input, pipeline} = qaInput(values, root, defaultTextonly);
+    return {input, allLines: true, crop, max, threshold, scenes, pipeline: values.has('--pipeline') ? pipeline : null};
   }
 
   if (values.has('--scenes')) throw new CliError('--scenes only applies with --all-lines');
@@ -142,7 +153,7 @@ export const parseJitterArgs = (argv, {root = projectRoot} = {}) => {
   const frames = Number(framesRaw);
   if (!Number.isInteger(frames) || frames < 2) throw new CliError(`--frames must be an integer of at least 2 (got ${framesRaw})`);
 
-  const input = values.has('--in') ? resolve(root, values.get('--in')) : defaultMaster(root);
+  const {input} = qaInput(values, root);
   return {input, from, frames, crop, max, threshold};
 };
 
@@ -316,7 +327,7 @@ const fmtTime = (t) => (t === null || !Number.isFinite(t) ? 'never' : `${t.toFix
  * was measured, or when `max` is set and a line's largest pair shift exceeds it. `schedule` (tests) replaces the page call: {info: {fps, frames}, lines}.
  *
  * @param {{input: string, crop: {x: number, y: number, w: number, h: number} | null, max: number | null, threshold?: number,
- *   scenes?: string | null, root?: string, envRoot?: string, tmpRoot?: string, ffmpegBin?: string, ffprobeBin?: string,
+ *   scenes?: string | null, pipeline?: string | null, root?: string, envRoot?: string, tmpRoot?: string, ffmpegBin?: string, ffprobeBin?: string,
  *   pythonBin?: string, schedule?: {info: {fps: number, frames: number}, lines: object[]} | null}} options
  * @param {Set<() => void>} cleanup
  */
@@ -327,6 +338,7 @@ export const jitterAllLines = async (
     max,
     threshold = 225,
     scenes = null,
+    pipeline = null,
     root = projectRoot,
     envRoot = root,
     tmpRoot = tmpdir(),
@@ -345,12 +357,17 @@ export const jitterAllLines = async (
   const {fps} = video;
   const manifest = manifestFor(input, video);
   const first = manifest?.firstFrame ?? 0;
-  const registry = scenes ?? manifest?.source ?? DEFAULT_SCENES;
+  const recorded = typeof manifest?.pipeline === 'string' ? manifest.pipeline : DEFAULT_PIPELINE_PATH;
+  if (pipeline !== null && manifest !== null && pipeline !== recorded) {
+    throw new CliError(`${input} was rendered with ${recorded} (its manifest says so), not --pipeline ${pipeline}`);
+  }
+  const config = pipeline ?? recorded;
+  const registry = scenes ?? manifest?.source ?? scenesInEffect(readPipelineAt(root, config), null);
   if (manifest && !manifest.textonly) {
     console.warn(`jitter: ${input} is not a text-only render; world motion behind the text reads as line motion (pnpm render --textonly)`);
   }
   if (!existsSync(join(root, registry))) throw new CliError(`scene registry ${registry} doesn't exist (pass --scenes=<module>)`);
-  const page = schedule ?? (await pageLines({root, envRoot, pythonBin: python, scenes: registry}));
+  const page = schedule ?? (await pageLines({root, envRoot, pythonBin: python, scenes: registry, pipeline: config}));
   if (Math.abs(page.info.fps - fps) > 1e-6) throw new CliError(`${input} is at ${fps} fps but the page runs at ${page.info.fps}; render it again`);
   if (manifest === null && video.frames < page.info.frames) {
     throw new CliError(

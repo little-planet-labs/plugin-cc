@@ -30,12 +30,13 @@ const schedLine = (id, words) => {
 
 describe('still-test arguments and plan', () => {
   it('parseStillTestArgs: defaults scale 2, every line, 3 samples, the project scenes; bad values', () => {
-    assert.deepEqual(parseStillTestArgs([]), {scale: 2, lines: null, samples: 3, scenes: null});
+    assert.deepEqual(parseStillTestArgs([]), {scale: 2, lines: null, samples: 3, scenes: null, pipeline: 'src/pipeline.json'});
     assert.deepEqual(parseStillTestArgs(['--scale=1', '--lines', 'a-1,b-2', '--samples=5', '--scenes=tests/s.js']), {
       scale: 1,
       lines: ['a-1', 'b-2'],
       samples: 5,
       scenes: 'tests/s.js',
+      pipeline: 'src/pipeline.json',
     });
     assert.throws(() => parseStillTestArgs(['--samples=1']), /--samples must be a whole number of frames, at least 2/);
     assert.throws(() => parseStillTestArgs(['--samples=2.5']), /--samples must be a whole number/);

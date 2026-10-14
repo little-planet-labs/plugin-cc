@@ -129,9 +129,24 @@ export const enterPose = (kind, u, {dt, wordDur, chars}) => {
 };
 
 /**
+ * How far exit motion travels on a page, as {sx, sy} for exitPose: one uniform
+ * scale, the page's short side over 1080 (the theme's type scale), on both axes,
+ * so a word falls or scatters the same distance relative to its own size on any
+ * page shape. On a 1920x1080 page (and any 16:9 page) it is exactly what it
+ * was, width / 1920 and height / 1080; on 1080x1920 it is 1 both ways, not
+ * 0.5625 across and 1.78 down.
+ * @param {{width: number, height: number}} page
+ * @returns {{sx: number, sy: number}}
+ */
+export const motionScale = ({width, height}) => {
+  const k = Math.min(width, height) / 1080;
+  return {sx: k, sy: k};
+};
+
+/**
  * A word's pose during its exit at progress v (0 < v < 1). r1, r2 are the
- * word's seeded randoms in [-1, 1]; sx, sy scale travelling distances (page
- * width / 1920, height / 1080); for 'suck', (dx, dy) is the vector from the
+ * word's seeded randoms in [-1, 1]; sx, sy scale travelling distances
+ * (motionScale); for 'suck', (dx, dy) is the vector from the
  * word's centre to the target point.
  * @param {string} kind One of EXITS.
  * @param {number} v

@@ -1,10 +1,13 @@
-// `pnpm check [--scenes=<module>]`
+// `pnpm check [--scenes=<module>] [--pipeline=<config>]`
 //
 // Fast checks before any render, no browser needed:
 // 1. Every data file parses (src/lib parsers) and the timing in effect
-//    resolves (src/lib/project.js); its warnings are printed.
-// 2. The scene registry (src/scenes/index.js, or --scenes) loads in Node and
-//    every sections.json scene key resolves to SCENES or DEFAULT_SCENE.
+//    resolves (src/lib/project.js); its warnings are printed. The pipeline
+//    config is src/pipeline.json, or --pipeline=<config> (an alternate config
+//    under src/, checked against src/pipeline.json: same fps, own outputName).
+// 2. The scene registry (--scenes, else the config's `scenes`, else
+//    src/scenes/index.js) loads in Node and every sections.json scene key
+//    resolves to SCENES or DEFAULT_SCENE.
 // 3. Nothing in the page's source (src/**/*.js|mjs|css|html and index.html)
 //    depends on a clock or blends layers: Date, performance.now, Math.random,
 //    crypto.getRandomValues / randomUUID, setTimeout / setInterval /
@@ -16,14 +19,15 @@
 //    destination-atop), which only cut alpha inside one canvas and never blend
 //    with the layers beneath it.
 // Each finding prints as file:line: what. Exit code 1 when anything is found.
-import {readdirSync, readFileSync, realpathSync, statSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, realpathSync, statSync} from 'node:fs';
 import {join, relative, resolve, sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {resolveScene, validateRegistry, validateScenesPath} from '../src/lib/registry.js';
 import {withWholeSongSection} from '../src/lib/sections.js';
+import {DEFAULT_PIPELINE_PATH, scenesInEffect} from '../src/lib/pipeline.js';
 import {CliError, runCli} from './lib/cli.mjs';
 import {PROJECT_ROOT} from './lib/env.mjs';
-import {loadProject} from './lib/project.mjs';
+import {loadProject, parsePipelineFlag} from './lib/project.mjs';
 
 /** The one file allowed to use requestAnimationFrame (the preview HUD's clock). */
 export const PREVIEW_CLOCK_MODULE = 'src/engine/preview.js';
@@ -278,23 +282,32 @@ export const scanProject = (root) => {
 
 /**
  * Every check. Returns the findings and warnings; never throws for a finding.
- * @param {{root?: string, scenes?: string}} [opts]
+ * @param {{root?: string, scenes?: string, pipeline?: string}} [opts] scenes: the registry to check (default: the
+ *   config's `scenes`, else src/scenes/index.js); pipeline: the config (default src/pipeline.json).
  */
-export const check = async ({root = PROJECT_ROOT, scenes = 'src/scenes/index.js'} = {}) => {
+export const check = async ({root = PROJECT_ROOT, scenes, pipeline: pipelinePath = DEFAULT_PIPELINE_PATH} = {}) => {
   const issues = [];
   const warnings = [];
   let specs = null;
   let lines = 0;
+  let config = null;
   try {
-    const {project, sectionSpecs} = loadProject(root);
+    const {project, sectionSpecs, pipeline} = loadProject(root, pipelinePath);
     warnings.push(...project.warnings);
     specs = sectionSpecs;
     lines = project.lyrics.length;
+    config = pipeline;
   } catch (err) {
     issues.push(`data: ${err.message}`);
   }
   try {
-    const path = validateScenesPath(scenes);
+    const path = validateScenesPath(config === null ? (scenes ?? 'src/scenes/index.js') : scenesInEffect(config, scenes));
+    if (!existsSync(resolve(root, path))) {
+      if (scenes !== undefined) throw new Error(`--scenes module ${path} does not exist`);
+      // The config's own registry (e.g. src/scenes-vertical/index.js) is written per project: say so plainly.
+      const whose = config?.scenes ? ` (the scenes of ${pipelinePath})` : '';
+      throw new Error(`scene registry ${path}${whose} does not exist; write it, or pass --scenes=<module> to use another`);
+    }
     let mod;
     try {
       mod = await import(pathToFileURL(resolve(root, path)).href);
@@ -320,11 +333,13 @@ export const check = async ({root = PROJECT_ROOT, scenes = 'src/scenes/index.js'
 export const main = (argv) =>
   runCli('check', async () => {
     let scenes;
+    let pipeline;
     for (const arg of argv) {
       if (arg.startsWith('--scenes=')) scenes = arg.slice('--scenes='.length);
-      else throw new CliError(`unexpected argument "${arg}". Usage: pnpm check [--scenes=<module>]`);
+      else if (arg.startsWith('--pipeline=')) pipeline = parsePipelineFlag(arg.slice('--pipeline='.length));
+      else throw new CliError(`unexpected argument "${arg}". Usage: pnpm check [--scenes=<module>] [--pipeline=<config>]`);
     }
-    const r = await check({scenes});
+    const r = await check({scenes, pipeline});
     for (const w of r.warnings) console.warn(`check: warning: ${w}`);
     for (const issue of r.issues) console.error(issue);
     if (r.issues.length > 0) throw new CliError(`${r.issues.length} problem${r.issues.length > 1 ? 's' : ''} found`);

@@ -23,10 +23,16 @@
     "render": "node scripts/render.mjs",
     "preview": "node scripts/preview.mjs",
     "contact-sheet": "node scripts/contact-sheet.mjs",
+    "posters": "node scripts/posters.mjs",
     "critique": "node scripts/critique.mjs",
     "pops": "node scripts/pops.mjs",
     "still-test": "node scripts/still-test.mjs",
     "jitter": "node scripts/jitter.mjs",
-    "beatmap": "node scripts/beatmap.mjs"
+    "beatmap": "node scripts/beatmap.mjs",
+    "clips": "node scripts/clips.mjs",
+    "draft:vertical": "node scripts/draft.mjs --pipeline=src/pipeline.vertical.json",
+    "render:vertical": "node scripts/render.mjs --pipeline=src/pipeline.vertical.json",
+    "preview:vertical": "node scripts/preview.mjs --pipeline=src/pipeline.vertical.json",
+    "clips:vertical": "node scripts/clips.mjs --pipeline=src/pipeline.vertical.json"
   }
 }

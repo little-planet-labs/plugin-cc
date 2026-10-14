@@ -23,10 +23,15 @@ import {placeSections, sectionsWithinDuration, withWholeSongSection} from './sec
  *   'fallback': the no-track default at pipeline fps, fallbackSeconds long, a steady beat grid at its tempo.
  * @property {AudioAnalysis} analysis The analysis scenes read (always at pipeline fps).
  * @property {string | null} audio Track path relative to public/ to play and mux, or null for silence.
- * @property {number} frames Frame count of every render (= analysis.durationInFrames).
+ * @property {number} frames Frame count of every render: analysis.durationInFrames, plus the tail when
+ *   pipeline.json tailSeconds > 0 (ceil((analysis.durationSeconds + tailSeconds) * fps)).
  * @property {number} durationInFrames Same as frames.
- * @property {number} duration Seconds: frames / fps.
- * @property {PlacedSection[]} sections Placed on the frame timeline, tiling [0, frames).
+ * @property {number} duration Seconds: frames / fps (the end of the video).
+ * @property {number} audioFrames Frames that cover the audio: analysis.durationInFrames (= frames without a tail).
+ * @property {number} audioEnd Seconds: audioFrames / fps, the frame-aligned end of the audio. Lyrics must be gone
+ *   by it; the frames from it to `duration` are the silent tail.
+ * @property {number} tailFrames frames - audioFrames (0 without a tail).
+ * @property {PlacedSection[]} sections Placed on the frame timeline, tiling [0, frames); the last runs through the tail.
  * @property {LyricLine[]} lyrics Lines in effect, each with an id.
  * @property {string[]} warnings Things the user should fix; the render goes on.
  */
@@ -86,6 +91,13 @@ export const withLineIds = (lines) => {
  * On fallback timing, sections and lyric lines that start past the end are
  * dropped so previews still render.
  *
+ * Tail: pipeline.json tailSeconds T > 0 runs the video T seconds past the end
+ * of the audio in effect (the analysed track, or fallbackSeconds on the
+ * fallback timing): frames = ceil((durationSeconds + T) * fps). The analysis,
+ * the audio choice, the warnings and the lyric lines don't change; the last
+ * section runs to the new end, and no section may start in the tail. T = 0
+ * (or absent) is exactly the timing without a tail.
+ *
  * @param {object} input
  * @param {Pipeline} input.pipeline
  * @param {AudioAnalysis} input.analysis Parsed src/data/audio-analysis.json.
@@ -128,14 +140,17 @@ export const resolveProject = ({pipeline, analysis, defaultAnalysis, overrides, 
   }
 
   const inEffect = timing === 'analysis' ? withBeatGridFallback(applyTimingOverrides(analysis, overrides)) : fallback;
-  const frames = inEffect.durationInFrames;
+  const audioFrames = inEffect.durationInFrames;
+  const tailSeconds = pipeline.tailSeconds ?? 0;
+  const frames = tailSeconds > 0 ? Math.max(audioFrames, Math.ceil((inEffect.durationSeconds + tailSeconds) * fps - 1e-9)) : audioFrames;
   const duration = frames / fps;
+  const audioEnd = audioFrames / fps;
   const specs = withWholeSongSection(sections);
-  const placed = placeSections(timing === 'analysis' ? specs : sectionsWithinDuration(specs, fps, frames), fps, frames);
+  const placed = placeSections(timing === 'analysis' ? specs : sectionsWithinDuration(specs, fps, audioFrames), fps, frames, audioFrames);
 
   let lines = withLineIds(lyrics);
   if (timing === 'fallback') {
-    const kept = lines.filter((l) => l.start < duration);
+    const kept = lines.filter((l) => l.start < audioEnd);
     if (kept.length < lines.length) warnings.push(`${lines.length - kept.length} lyric line(s) start after the ${fallbackSeconds}s fallback timing and are left out.`);
     lines = kept;
   }
@@ -150,6 +165,9 @@ export const resolveProject = ({pipeline, analysis, defaultAnalysis, overrides, 
     frames,
     durationInFrames: frames,
     duration,
+    audioFrames,
+    audioEnd,
+    tailFrames: frames - audioFrames,
     sections: placed,
     lyrics: lines,
     warnings,

@@ -1,4 +1,4 @@
-// `pnpm still-test [--scale=2] [--lines=<id,...>] [--samples=3] [--scenes=<module>]`
+// `pnpm still-test [--scale=2] [--lines=<id,...>] [--samples=3] [--scenes=<module>] [--pipeline=<config>]`
 //
 // Held-text pixel check on the engine itself (no render needed): for every
 // word of every lyric line, capture frames across the word's own hold window,
@@ -26,32 +26,36 @@
 // sampled frames), the words that never settle before their exit starts, and
 // "lines with motion during hold: N". Exits 1 when N > 0, and when no word
 // could be checked at all (a check of nothing is not a pass). --lines limits
-// the check to those line ids. Needs `pnpm setup:env`; launches Chromium
-// twice (once at scale 1 to read the schedule, once to capture).
+// the check to those line ids. --pipeline=<config> (default
+// src/pipeline.json) opens the page with that config (its page size, fps and
+// its own scene registry unless --scenes names one). Needs `pnpm setup:env`;
+// launches Chromium twice (once at scale 1 to read the schedule, once to capture).
 import {existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {DEFAULT_PIPELINE_PATH, scenesInEffect} from '../src/lib/pipeline.js';
 import {validateScenesPath} from '../src/lib/registry.js';
 import {capture, CliError, runCli} from './lib/cli.mjs';
 import {playwrightEnv, requireVenvPython} from './lib/env.mjs';
-import {loadProject} from './lib/project.mjs';
+import {loadProject, parsePipelineFlag} from './lib/project.mjs';
 import {holdRange, pageLines, parseFlags, spreadFrames} from './lib/qa.mjs';
 import {requireCaptureEnv} from './still.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const USAGE = '[--scale=<s>] [--lines=<id,...>] [--samples=<n>] [--scenes=<module>]';
-/** The scene registry the page loads without --scenes. */
+const USAGE = '[--scale=<s>] [--lines=<id,...>] [--samples=<n>] [--scenes=<module>] [--pipeline=<config>]';
+/** The scene registry the page loads without --scenes (and without a config `scenes`). */
 export const DEFAULT_SCENES = 'src/scenes/index.js';
 
 /**
  * `--scale` (default 2), `--lines` (null: every line), `--samples` (default 3,
- * at least 2), `--scenes` (null: src/scenes/index.js).
+ * at least 2), `--scenes` (null: the config's registry, else src/scenes/index.js),
+ * `--pipeline` (default src/pipeline.json).
  * @param {string[]} argv
  */
 export const parseStillTestArgs = (argv) => {
-  const {values} = parseFlags(argv, {values: ['--scale', '--lines', '--samples', '--scenes'], usage: USAGE});
+  const {values} = parseFlags(argv, {values: ['--scale', '--lines', '--samples', '--scenes', '--pipeline'], usage: USAGE});
   let scale = 2;
   if (values.has('--scale')) {
     const raw = values.get('--scale');
@@ -77,7 +81,8 @@ export const parseStillTestArgs = (argv) => {
       throw new CliError(err.message);
     }
   }
-  return {scale, lines, samples, scenes};
+  const pipeline = values.has('--pipeline') ? parsePipelineFlag(values.get('--pipeline')) : DEFAULT_PIPELINE_PATH;
+  return {scale, lines, samples, scenes, pipeline};
 };
 
 const secs = (t) => (t === null ? 'never' : `${t.toFixed(3)} s`);
@@ -132,12 +137,14 @@ const sameSchedule = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  *   envRoot: where scripts/, .venv and .cache live (the project itself, except in tests).
  */
 export const stillTest = async (opts, cleanup, {root = projectRoot, envRoot = root, pythonBin, tmpRoot = tmpdir()} = {}) => {
-  loadProject(root); // the data must be valid before a browser starts; its errors name the file
-  const scenes = opts.scenes ?? DEFAULT_SCENES;
+  const config = opts.pipeline ?? DEFAULT_PIPELINE_PATH;
+  // The data must be valid before a browser starts; its errors name the file.
+  const {pipeline} = loadProject(root, config);
+  const scenes = scenesInEffect(pipeline, opts.scenes);
   if (!existsSync(join(root, scenes))) throw new CliError(`scene registry ${scenes} doesn't exist`);
   const python = pythonBin ? requireVenvPython(envRoot, pythonBin) : requireCaptureEnv(envRoot);
 
-  const page = await pageLines({root, envRoot, pythonBin: python, scenes: opts.scenes});
+  const page = await pageLines({root, envRoot, pythonBin: python, scenes: opts.scenes, pipeline: config});
   const {fps, frames} = page.info;
   if (page.lines.some((l) => !Array.isArray(l.words))) throw new CliError("window.__mv.lines() has no word schedules; the engine is older than still-test");
   let lines = page.lines;
@@ -155,7 +162,8 @@ export const stillTest = async (opts, cleanup, {root = projectRoot, envRoot = ro
     const tmp = mkdtempSync(join(tmpRoot, 'music-video-still-test-'));
     cleanup.add(() => rmSync(tmp, {recursive: true, force: true}));
     const planFile = join(tmp, 'plan.json');
-    writeFileSync(planFile, JSON.stringify({scale: opts.scale, scenes: opts.scenes, checks: plan.checks.map(({id, word, frames: f}) => ({id, word, frames: f}))}));
+    const pipelineField = config === DEFAULT_PIPELINE_PATH ? {} : {pipeline: config};
+    writeFileSync(planFile, JSON.stringify({scale: opts.scale, scenes: opts.scenes, ...pipelineField, checks: plan.checks.map(({id, word, frames: f}) => ({id, word, frames: f}))}));
     const out = await capture(python, [join(envRoot, 'scripts/still_test.py'), 'check', '--root', root, '--plan', planFile], {
       cwd: root,
       env: playwrightEnv(envRoot),

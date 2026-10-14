@@ -1,11 +1,15 @@
-// `pnpm contact-sheet [--in <mp4>] [--out <png>] [--columns=<n>]`
+// `pnpm contact-sheet [--in <mp4>] [--out <png>] [--columns=<n>] [--pipeline=<config>]`
 //
 // One still per section (half a second in, so entrances have started), plus
 // one at the middle of every long section, pulled from the FINAL video with
 // ffmpeg and tiled into one PNG. The sections are the project's placed
 // sections (scripts/lib/project.mjs, the same frame ranges the page uses). The
 // legend (tile number -> time and section) is printed. Defaults: in =
-// out/<outputName>.mp4, out = out/contact-sheet.png, 4 columns.
+// out/<outputName>.mp4, out = out/contact-sheet.png, 4 columns. With
+// --pipeline=<config> (an alternate config such as src/pipeline.vertical.json)
+// the project timing and the default input are that config's, and the default
+// out is out/<outputName>-contact-sheet.png. Tiles are 480 px wide whatever the
+// video's shape (a 9:16 video gives 480x854 tiles).
 //
 // A render of part of the video (pnpm render --frames=a-b) has a manifest
 // saying which page frame its first frame shows; the sheet then covers only
@@ -18,7 +22,8 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {CliError, run, runCli} from './lib/cli.mjs';
 import {probeDuration} from './lib/encode.mjs';
 import {manifestPath, masterOutput} from './lib/outputs.mjs';
-import {loadProject} from './lib/project.mjs';
+import {DEFAULT_PIPELINE_PATH} from '../src/lib/pipeline.js';
+import {loadProject, parsePipelineFlag, readPipelineAt} from './lib/project.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,29 +61,35 @@ export const contactSheetFrames = (sections, {fps, first = 0, frames}) => {
   return out;
 };
 
-/** `--in`, `--out`, `--columns=<n>`; paths resolve against `root`. */
+/**
+ * `--in`, `--out`, `--columns=<n>`, `--pipeline=<config>`; paths resolve against `root`. `pipeline` is in the
+ * result only when given (the default is src/pipeline.json).
+ */
 export const parseContactSheetArgs = (argv, {root = projectRoot} = {}) => {
   let input = null;
   let output = null;
   let columns = 4;
+  let pipeline = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const [name, inline] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, null];
-    if (!['--in', '--out', '--columns'].includes(name)) {
-      throw new CliError(`unexpected argument "${arg}" (use --in <mp4>, --out <png>, --columns=<n>)`);
+    if (!['--in', '--out', '--columns', '--pipeline'].includes(name)) {
+      throw new CliError(`unexpected argument "${arg}" (use --in <mp4>, --out <png>, --columns=<n>, --pipeline=<config>)`);
     }
     const value = inline ?? argv[++i];
     if (value === undefined || value === '' || value.startsWith('-')) throw new CliError(`${name} needs a value`);
     if (name === '--in') input = value;
     else if (name === '--out') output = value;
+    else if (name === '--pipeline') pipeline = parsePipelineFlag(value);
     else {
       columns = Number(value);
       if (!Number.isInteger(columns) || columns < 1) throw new CliError(`--columns must be a positive integer (got ${value})`);
     }
   }
-  output = resolve(root, output ?? 'out/contact-sheet.png');
+  const alternate = pipeline !== null && pipeline !== DEFAULT_PIPELINE_PATH;
+  output = resolve(root, output ?? (alternate ? `out/${readPipelineAt(root, pipeline).outputName}-contact-sheet.png` : 'out/contact-sheet.png'));
   if (!/\.png$/i.test(output)) throw new CliError(`--out must end in .png (got ${output})`);
-  return {input: input === null ? null : resolve(root, input), output, columns};
+  return {input: input === null ? null : resolve(root, input), output, columns, ...(pipeline === null ? {} : {pipeline})};
 };
 
 /** Which page frames the video holds: from its manifest, else frame 0 for its probed duration. */
@@ -103,10 +114,10 @@ const videoSpan = async (input, fps, ffprobeBin) => {
  * only appears once it's complete.
  */
 export const contactSheet = async (
-  {input, output, columns, root = projectRoot, ffmpegBin = 'ffmpeg', ffprobeBin = 'ffprobe', tmpRoot = tmpdir()},
+  {input, output, columns, pipeline: pipelinePath = DEFAULT_PIPELINE_PATH, root = projectRoot, ffmpegBin = 'ffmpeg', ffprobeBin = 'ffprobe', tmpRoot = tmpdir()},
   cleanup,
 ) => {
-  const {pipeline, project} = loadProject(root);
+  const {pipeline, project} = loadProject(root, pipelinePath);
   const file = input ?? resolve(root, masterOutput(pipeline.outputName));
   if (!existsSync(file)) throw new CliError(`${file} doesn't exist. Run \`pnpm render\` first (or pass --in).`);
   const {fps} = project;

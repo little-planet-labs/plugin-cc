@@ -1,6 +1,9 @@
 // Where the render scripts write, and the rule that protects the master:
 // a draft, preview, text-only or alternate-scenes output never resolves to
-// out/<outputName>.mp4. Paths are compared canonically: symlinks resolved
+// out/<outputName>.mp4, and no output of one pipeline config ever resolves to
+// another config's master (refuseMasters: src/pipeline.json's
+// out/music-video.mp4 and src/pipeline.vertical.json's
+// out/music-video-vertical.mp4 protect each other). Paths are compared canonically: symlinks resolved
 // (/tmp is /private/tmp, an out/ linked to another drive, a linked project
 // folder) and case-insensitively (default macOS volumes are, so
 // out/Music-Video.mp4 IS out/music-video.mp4); when both files exist, by
@@ -66,6 +69,22 @@ export const refuseMaster = (output, root, outputName, what) => {
 };
 
 /**
+ * Refuse `output` (absolute) when it is the master of any config in `masters` ({path, outputName}, as
+ * scripts/lib/project.mjs knownMasters lists them), naming the config.
+ * @param {string} output
+ * @param {string} root
+ * @param {{path: string, outputName: string}[]} masters
+ * @param {string} what What is being written, e.g. "a draft".
+ */
+export const refuseMasters = (output, root, masters, what) => {
+  for (const {path, outputName} of masters) {
+    if (samePath(output, resolve(root, masterOutput(outputName)))) {
+      throw new CliError(`${output} is the master video of ${path} (${masterOutput(outputName)}); ${what} must go elsewhere (pass --out <path>)`);
+    }
+  }
+};
+
+/**
  * The default output of a render (relative to the project):
  * - an alternate scene registry: out/<module basename>.mp4
  * - text-only: out/<outputName>-textonly.mp4 (out/<module basename>-textonly.mp4 with --scenes)
@@ -73,13 +92,17 @@ export const refuseMaster = (output, root, outputName, what) => {
  * - a draft (`draft: true`): out/draft.mp4
  * A partial range (--frames) adds -frames-<a>-<b> (a, b inclusive) to every one of these, so a partial
  * render never replaces the full render of its kind (and never defaults onto the master).
+ * With an alternate pipeline config (`alternatePipeline`, any --pipeline but src/pipeline.json) the names
+ * that don't already start with its outputName get it as a prefix: out/<outputName>-draft.mp4 and
+ * out/<outputName>-<module basename>.mp4, so the two configs' defaults never collide.
  * @param {{outputName: string, textonly?: boolean, scenes?: string | null, range?: {first: number, last: number} | null,
- *   draft?: boolean}} o range: [first, last) frames when partial.
+ *   draft?: boolean, alternatePipeline?: boolean}} o range: [first, last) frames when partial.
  */
-export const defaultRenderOutput = ({outputName, textonly = false, scenes = null, range = null, draft = false}) => {
+export const defaultRenderOutput = ({outputName, textonly = false, scenes = null, range = null, draft = false, alternatePipeline = false}) => {
   const suffix = range ? `-frames-${range.first}-${range.last - 1}` : '';
-  if (draft) return `${DRAFT_OUTPUT.replace(/\.mp4$/, '')}${suffix}.mp4`;
-  const base = scenes ? basename(scenes, extname(scenes)) : outputName;
+  const prefix = alternatePipeline ? `${outputName}-` : '';
+  if (draft) return alternatePipeline ? `out/${prefix}draft${suffix}.mp4` : `${DRAFT_OUTPUT.replace(/\.mp4$/, '')}${suffix}.mp4`;
+  const base = scenes ? `${prefix}${basename(scenes, extname(scenes))}` : outputName;
   return `out/${base}${textonly ? '-textonly' : ''}${suffix}.mp4`;
 };
 
@@ -89,14 +112,15 @@ export const manifestPath = (video) => `${video.replace(/\.mp4$/i, '')}.manifest
 /**
  * The sidecar written next to every render (the shape pinned in the design):
  * {fps, frames, width, height, scale, textonly, cuts: [frame], blurWindows: [{from, to, samples}], source},
- * plus firstFrame: the page frame shown at video frame 0 (0 unless --frames). Cuts and blur windows are
+ * plus firstFrame: the page frame shown at video frame 0 (0 unless --frames), and, only for a render with an
+ * alternate pipeline config, pipeline: its path (absent means src/pipeline.json). Cuts and blur windows are
  * video frames (page frame - firstFrame) inside the rendered range; blurWindows lists only blur that was
  * rendered (a draft renders none).
  * @param {{fps: number, first: number, last: number, width: number, height: number, scale: number, textonly: boolean,
- *   cuts: number[], blurWindows: {a: number, b: number, samples: number}[], blur: boolean, source: string}} o
- *   cuts and blurWindows in seconds as the page reports them.
+ *   cuts: number[], blurWindows: {a: number, b: number, samples: number}[], blur: boolean, source: string,
+ *   pipeline?: string | null}} o cuts and blurWindows in seconds as the page reports them; pipeline null for src/pipeline.json.
  */
-export const buildManifest = ({fps, first, last, width, height, scale, textonly, cuts, blurWindows, blur, source}) => {
+export const buildManifest = ({fps, first, last, width, height, scale, textonly, cuts, blurWindows, blur, source, pipeline = null}) => {
   const frames = last - first;
   const toVideo = (seconds) => Math.round(seconds * fps) - first;
   return {
@@ -114,6 +138,7 @@ export const buildManifest = ({fps, first, last, width, height, scale, textonly,
       : [],
     source,
     firstFrame: first,
+    ...(pipeline === null ? {} : {pipeline}),
   };
 };
 

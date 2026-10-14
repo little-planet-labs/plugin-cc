@@ -70,9 +70,12 @@ export const makeContext = ({section, index, root, host, inst}) => {
     fps,
     width,
     height,
-    /** Video length in seconds and frames. */
+    /** Video length in seconds and frames (through the tail, when pipeline.json tailSeconds > 0). */
     duration: project.duration,
     frames: project.frames,
+    /** End of the audio: frame-aligned seconds and frames. Equal to duration / frames without a tail; from here on is silence. */
+    audioEnd: project.audioEnd,
+    audioFrames: project.audioFrames,
     /** true in capture mode (render=1), true when only the lyric layer shows (textonly=1). */
     render: mode.render,
     textonly: mode.textonly,

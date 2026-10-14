@@ -7,7 +7,7 @@ process group, so stopping the worker stops its Chromium and its ffmpeg with
 it. The worker owns exactly one Chromium (one Capture) and one encoder.
 
     python scripts/render_chunk.py --root DIR --from A --to B --frames-total N
-        --scale S --format png|jpeg [--textonly] [--scenes MODULE] [--single]
+        --scale S --format png|jpeg [--textonly] [--scenes MODULE] [--pipeline CONFIG] [--single]
         --encoder JSON [--sample-log FILE]
 
 --encoder is a JSON array: the ffmpeg binary and its full argument list
@@ -43,7 +43,7 @@ async def render_chunk(a: argparse.Namespace) -> int:
     if not isinstance(encoder, list) or not encoder or not all(isinstance(x, str) for x in encoder):
         raise CaptureError("--encoder must be a JSON array of strings (ffmpeg and its arguments)")
     label = f"chunk [{a.start}, {a.end})"
-    cap = Capture(a.root, scale=a.scale, textonly=a.textonly, scenes=a.scenes, fmt=a.format)
+    cap = Capture(a.root, scale=a.scale, textonly=a.textonly, scenes=a.scenes, fmt=a.format, pipeline=a.pipeline)
     proc = None
     log = open(a.sample_log, "w", encoding="utf-8") if a.sample_log else None
     try:
@@ -107,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--format", choices=["png", "jpeg"], default="png")
     p.add_argument("--textonly", action="store_true")
     p.add_argument("--scenes")
+    p.add_argument("--pipeline", help="alternate pipeline config under src/ (default src/pipeline.json)")
     p.add_argument("--single", action="store_true", help="one capture per frame (no subframes)")
     p.add_argument("--encoder", required=True, help="JSON array: ffmpeg and its arguments")
     p.add_argument("--sample-log", help="write the captured sample times, one JSON line per frame")

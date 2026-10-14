@@ -15,7 +15,9 @@ import {gridAnalysis} from './fixtures/data-grid.mjs';
 const WAV = 'audio/track.wav';
 const MP3 = 'audio/track.mp3';
 const defaultAnalysis = parseAudioAnalysis(JSON.parse(readFileSync(new URL('../src/data/audio-analysis.default.json', import.meta.url), 'utf8')));
-const pipelineAt = (over = {}) => parsePipeline({...JSON.parse(readFileSync(new URL('../src/pipeline.json', import.meta.url), 'utf8')), ...over});
+// tailSeconds 0: these cases pin the timing without a tail (a project's own pipeline.json may set one;
+// tests/project-tail.test.mjs covers it).
+const pipelineAt = (over = {}) => parsePipeline({...JSON.parse(readFileSync(new URL('../src/pipeline.json', import.meta.url), 'utf8')), tailSeconds: 0, ...over});
 
 /** An analysed track: 131.15 s at 30 fps = 3935 frames, beats every 0.5 s. */
 const analysed = (source, fps = 30) => {

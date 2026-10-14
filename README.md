@@ -202,9 +202,17 @@ Makes a kinetic-typography music video about any company. It researches the comp
 
 ```
 company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction + beat map → drafts ⇄ critic → video
+                                                                                     (optional) → vertical cut, shorts, posters
 ```
 
 You approve each step that matters: the brief, the topics, the lyrics, and the creative direction. Satire and parody are fine, and it asks how the company's logo may be used and whether you'll monetize the video.
+
+Version 1.1.0 adds optional versions for social posts, which the interview asks about up front as separate questions:
+
+- **A full-length vertical version** (9:16, 1080x1920) for Instagram Reels and TikTok. It's re-laid out for a phone held upright rather than cropped: you approve an adaptation of the direction, the lyrics stay clear of the apps' own buttons and captions, and a full-length cut stays under the 3:00 Reels limit.
+- **Shorts:** stand-alone clips of 15 to 60 s. It proposes segments that open cleanly and land on a strong line, you pick which to make, and each clip is cut frame-exactly from the vertical master. It shows you one early, and can write a title, caption and hashtags for each if you want them.
+- **Cover posters:** YouTube thumbnails as new compositions in the video's style, with review sheets at phone and sidebar sizes.
+- **A tail after the song,** so a closing move can finish after the audio ends.
 
 Version 1.0.0 replaces Remotion with a new rendering engine:
 

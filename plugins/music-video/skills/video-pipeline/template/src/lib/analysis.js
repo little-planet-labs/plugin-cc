@@ -14,7 +14,7 @@ export const ENERGY_BANDS = Object.freeze(['low', 'mid', 'high']);
  * @property {string} generator
  * @property {number} fps
  * @property {number} durationSeconds
- * @property {number} durationInFrames ceil(durationSeconds * fps - 1e-9): the frame count of every render.
+ * @property {number} durationInFrames ceil(durationSeconds * fps - 1e-9): the frames of the audio (every render has these, plus pipeline.json tailSeconds).
  * @property {number} tempo Estimated BPM.
  * @property {number} beatsPerBar Assumed meter used for downbeat estimation (4 = 4/4).
  * @property {number[]} beats Beat times in seconds, ascending.

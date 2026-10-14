@@ -6,10 +6,14 @@
 // unregistered line fails naming its id; a registration of an id that isn't in
 // lyrics.json fails naming it.
 import assert from 'node:assert/strict';
+import {join} from 'node:path';
 import {describe, it} from 'node:test';
 import {LyricRegistrations, resolveScene, unregisteredLinesError, validateRegistry, validateScenesPath} from '../src/lib/registry.js';
 import {LyricLayer} from '../src/engine/text.js';
-import * as templateRegistry from '../src/scenes/index.js';
+import {PROJECT_ROOT} from '../scripts/lib/env.mjs';
+import {loadRegistryState, registryStateProblems} from './fixtures/registry-state.mjs';
+
+const fixtureRoot = (state) => join(PROJECT_ROOT, 'tests/fixtures/registry-states', state);
 
 const scene = {draw() {}};
 const lines = [
@@ -42,10 +46,48 @@ describe('scene registry', () => {
     assert.throws(() => validateRegistry({SCENES: {a: {draw() {}, pre: -1}}, DEFAULT_SCENE: null}), /scene "a": pre must be seconds >= 0/);
   });
 
-  it('the template registry is valid and its placeholder is the default', () => {
-    const reg = validateRegistry(templateRegistry, 'src/scenes/index.js');
-    assert.equal(typeof reg.DEFAULT_SCENE?.draw, 'function');
-    assert.equal(resolveScene(reg, 'song'), reg.DEFAULT_SCENE);
+  it("registry state: this project's registry is valid for its state (placeholder as the default, or deleted with DEFAULT_SCENE null and every sections.json key registered)", async () => {
+    assert.deepEqual(registryStateProblems(await loadRegistryState(PROJECT_ROOT)), []);
+  });
+
+  it('registry state, template: placeholder.js is the registered default and plays the whole-song section', async () => {
+    const state = await loadRegistryState(fixtureRoot('template'));
+    assert.notEqual(state.placeholder, null, 'the template fixture has placeholder.js');
+    assert.deepEqual(registryStateProblems(state), []);
+    const reg = validateRegistry(state.mod);
+    assert.equal(reg.DEFAULT_SCENE, state.placeholder);
+    assert.equal(resolveScene(reg, 'song', 'song'), state.placeholder);
+  });
+
+  it('registry state, built: no placeholder, DEFAULT_SCENE null, every sections.json key registered', async () => {
+    const state = await loadRegistryState(fixtureRoot('built'));
+    assert.equal(state.placeholder, null, 'the built fixture has no placeholder.js');
+    assert.deepEqual(registryStateProblems(state), []);
+    const reg = validateRegistry(state.mod);
+    assert.equal(reg.DEFAULT_SCENE, null);
+    for (const s of state.sections) assert.equal(resolveScene(reg, s.scene, s.id), reg.SCENES[s.scene]);
+  });
+
+  it('registry state: each broken state is reported, in both branches', async () => {
+    const template = await loadRegistryState(fixtureRoot('template'));
+    const built = await loadRegistryState(fixtureRoot('built'));
+    const other = {draw() {}};
+    // Template branch: a placeholder that isn't the default (another default, or none at all).
+    assert.deepEqual(registryStateProblems({...template, mod: {SCENES: {}, DEFAULT_SCENE: other}}), ['placeholder.js exists but is not the registered DEFAULT_SCENE']);
+    const none = registryStateProblems({...template, mod: {SCENES: {}, DEFAULT_SCENE: null}});
+    assert.equal(none[0], 'placeholder.js exists but is not the registered DEFAULT_SCENE');
+    assert.match(none[1], /unknown scene key "song" \(section "song"\)/);
+    // Built branch: a leftover default, and a sections.json key with no scene.
+    assert.deepEqual(registryStateProblems({...built, mod: {...built.mod, DEFAULT_SCENE: other}}), ['placeholder.js is gone but DEFAULT_SCENE is not null']);
+    const {chorus, ...rest} = built.mod.SCENES;
+    void chorus;
+    const missing = registryStateProblems({...built, mod: {SCENES: rest, DEFAULT_SCENE: null}});
+    assert.equal(missing[0], 'scene key "chorus" (section "chorus-1") is not in SCENES');
+    assert.match(missing[1], /unknown scene key "chorus" \(section "chorus-1"\)/);
+    // An empty sections.json in the built state needs the whole-song key "song".
+    assert.deepEqual(registryStateProblems({...built, sections: []}).slice(0, 1), ['scene key "song" (section "song") is not in SCENES']);
+    // Either branch: an invalid registry is reported by validateRegistry's own message.
+    assert.deepEqual(registryStateProblems({...built, mod: {SCENES: {verse: {setup() {}}}, DEFAULT_SCENE: null}}), ['scene "verse" has no draw(t, ctx) function']);
   });
 
   it('a scenes path must stay inside the project', () => {

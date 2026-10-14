@@ -1,8 +1,8 @@
 {
   "name": "music-video",
   "displayName": "Music Video",
-  "version": "1.0.0",
-  "description": "Make a beat-synced kinetic-typography music video about any company: researched topics, lyrics and a Suno prompt, then a 4K video with its own look, drawn as an HTML page and rendered with Playwright and ffmpeg.",
+  "version": "1.1.0",
+  "description": "Make a beat-synced kinetic-typography music video about any company: researched topics, lyrics and a Suno prompt, then a 4K video with its own look, drawn as an HTML page and rendered with Playwright and ffmpeg. Optional extras: a full-length vertical 9:16 version for Reels and TikTok, stand-alone shorts cut from it, and cover posters.",
   "author": {
     "name": "Little Planet Labs"
   }

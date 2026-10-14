@@ -5,11 +5,11 @@
 // (window.__mv.lines(), read through scripts/capture.py by still_test.py).
 import {existsSync, readFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
-import {parsePipeline} from '../../src/lib/pipeline.js';
+import {DEFAULT_PIPELINE_PATH} from '../../src/lib/pipeline.js';
 import {capture, CliError} from './cli.mjs';
 import {playwrightEnv, PROJECT_ROOT} from './env.mjs';
 import {defaultRenderOutput, manifestPath, masterOutput} from './outputs.mjs';
-import {readJson} from './project.mjs';
+import {parsePipelineFlag, readPipelineAt} from './project.mjs';
 
 /**
  * Parse `--flag value` / `--flag=value` (each value flag at most once) and bare
@@ -71,20 +71,32 @@ export const probeVideoInfo = async (ffprobeBin, file) => {
   return {width: stream.width, height: stream.height, fps, frames, startTime: Number.isFinite(startTime) ? startTime : 0};
 };
 
-/** src/pipeline.json, parsed (outputName and fps for the defaults). */
-export const readPipeline = (root = PROJECT_ROOT) => {
-  try {
-    return parsePipeline(readJson(root, 'src/pipeline.json'));
-  } catch (err) {
-    throw err instanceof CliError ? err : new CliError(err.message);
-  }
+/** The pipeline config (default src/pipeline.json), parsed (outputName and fps for the defaults). */
+export const readPipeline = (root = PROJECT_ROOT, pipelinePath = DEFAULT_PIPELINE_PATH) => readPipelineAt(root, pipelinePath);
+
+/** The master video of the config, out/<outputName>.mp4, absolute. */
+export const defaultMaster = (root = PROJECT_ROOT, pipelinePath = DEFAULT_PIPELINE_PATH) =>
+  resolve(root, masterOutput(readPipeline(root, pipelinePath).outputName));
+
+/** The config's text-only render, out/<outputName>-textonly.mp4, absolute. */
+export const defaultTextonly = (root = PROJECT_ROOT, pipelinePath = DEFAULT_PIPELINE_PATH) =>
+  resolve(root, defaultRenderOutput({outputName: readPipeline(root, pipelinePath).outputName, textonly: true}));
+
+/**
+ * The --pipeline value of parsed QA flags (default src/pipeline.json) and the input video: --in resolved
+ * against `root`, else `fallback(root, pipeline)` (defaultMaster or defaultTextonly). The config is read
+ * whenever --pipeline is given, --in or not, so a bad or missing --pipeline is never ignored. Call it after
+ * every other check: the default reads the config.
+ * @param {Map<string, string>} values parseFlags' values.
+ * @param {string} root
+ * @param {(root: string, pipeline: string) => string} [fallback]
+ * @returns {{pipeline: string, input: string}}
+ */
+export const qaInput = (values, root, fallback = defaultMaster) => {
+  const pipeline = values.has('--pipeline') ? parsePipelineFlag(values.get('--pipeline')) : DEFAULT_PIPELINE_PATH;
+  const byDefault = values.has('--in') && !values.has('--pipeline') ? null : fallback(root, pipeline);
+  return {pipeline, input: values.has('--in') ? resolve(root, values.get('--in')) : byDefault};
 };
-
-/** The master video, out/<outputName>.mp4, absolute. */
-export const defaultMaster = (root = PROJECT_ROOT) => resolve(root, masterOutput(readPipeline(root).outputName));
-
-/** The text-only render, out/<outputName>-textonly.mp4, absolute. */
-export const defaultTextonly = (root = PROJECT_ROOT) => resolve(root, defaultRenderOutput({outputName: readPipeline(root).outputName, textonly: true}));
 
 const isFrame = (v) => Number.isInteger(v) && v >= 0;
 
@@ -190,14 +202,16 @@ export const spreadFrames = (first, last, samples) => {
  * window.__mv.lines() ({id, first, settled, exitStart, exitEnd, next, words:
  * [{index, text, reveal, settled, exitStart, exitEnd}]}, seconds; a non-finite
  * time comes back as null).
- * @param {{root: string, envRoot?: string, pythonBin: string, scenes?: string | null}} o
+ * @param {{root: string, envRoot?: string, pythonBin: string, scenes?: string | null, pipeline?: string | null}} o
+ *   pipeline: the config (null or src/pipeline.json: the default).
  * @returns {Promise<{info: {fps: number, frames: number, width: number, height: number, duration: number},
  *   lines: {id: string, first: number, settled: number, exitStart: number | null, exitEnd: number | null, next: number | null,
  *     words: {index: number, text: string, reveal: number, settled: number, exitStart: number | null, exitEnd: number | null}[]}[]}>}
  */
-export const pageLines = async ({root, envRoot = root, pythonBin, scenes = null}) => {
+export const pageLines = async ({root, envRoot = root, pythonBin, scenes = null, pipeline = null}) => {
   const args = [join(envRoot, 'scripts/still_test.py'), 'lines', '--root', root];
   if (scenes) args.push('--scenes', scenes);
+  if (pipeline && pipeline !== DEFAULT_PIPELINE_PATH) args.push('--pipeline', pipeline);
   const out = await capture(pythonBin, args, {cwd: root, env: playwrightEnv(envRoot), label: 'still_test.py lines'});
   try {
     return JSON.parse(out.trim().split('\n').pop());

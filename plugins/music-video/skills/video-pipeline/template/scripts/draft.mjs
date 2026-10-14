@@ -1,4 +1,4 @@
-// `pnpm draft [--out <mp4>] [--pool=<n>] [--chunk-seconds=<s>] [--frames=<a>-<b>] [--scenes=<module>]`
+// `pnpm draft [--out <mp4>] [--pool=<n>] [--chunk-seconds=<s>] [--frames=<a>-<b>] [--scenes=<module>] [--pipeline=<config>]`
 //
 // A quick render for judging timing and motion: pipeline.json `draft` settings
 // (scale 0.5 = 960x540 from the 1920x1080 page, CRF 23, veryfast, JPEG
@@ -11,6 +11,10 @@
 // --frames) and is never the master: an --out that
 // resolves to out/<outputName>.mp4 (compared case-insensitively) is refused.
 // Per critique round: `pnpm draft --out out/draft-r<n>.mp4`.
+//
+// --pipeline=<config> drafts with another config (its page size and `draft`
+// settings; src/pipeline.vertical.json drafts at 540x960). Its default output
+// is out/<outputName>-draft.mp4, and no draft ever writes any config's master.
 import {realpathSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';

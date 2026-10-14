@@ -35,8 +35,14 @@ describe('browser-safe engine modules', () => {
       await import(new URL(`../src/engine/${file}`, import.meta.url).href);
     });
   }
-  it('the scene registry and placeholder import in Node', async () => {
-    const mod = await import(new URL('../src/scenes/index.js', import.meta.url).href);
-    assert.equal(typeof mod.DEFAULT_SCENE.setup, 'function');
-  });
+  // This project's registry, whatever state it is in, and both fixture states (template: placeholder as the
+  // default; built: placeholder deleted, DEFAULT_SCENE null), so both shapes are imported every run.
+  for (const root of ['..', '../tests/fixtures/registry-states/template', '../tests/fixtures/registry-states/built']) {
+    it(`the scene registry under ${root === '..' ? 'this project' : root.slice(3)} (and its scene modules) imports in Node with no DOM globals`, async () => {
+      for (const g of ['document', 'window', 'HTMLElement', 'requestAnimationFrame']) assert.equal(typeof globalThis[g], 'undefined', `${g} must not exist in this test`);
+      const mod = await import(new URL(`${root}/src/scenes/index.js`, import.meta.url).href);
+      assert.equal(typeof mod.SCENES, 'object');
+      assert.ok(mod.SCENES !== null && 'DEFAULT_SCENE' in mod, 'exports SCENES and DEFAULT_SCENE');
+    });
+  }
 });

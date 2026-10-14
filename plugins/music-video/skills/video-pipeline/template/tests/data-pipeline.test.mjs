@@ -18,8 +18,10 @@ const minimal = () => ({
 describe('parsePipeline', () => {
   it('the committed pipeline.json parses to exactly its own values', () => {
     const p = parsePipeline(committed);
-    const {$comment, ...expected} = committed;
+    const {$comment, ...own} = committed;
     void $comment;
+    // tailSeconds is optional: absent parses to 0 (no tail).
+    const expected = {tailSeconds: 0, ...own};
     assert.deepEqual(p, expected);
     // The committed render/draft blocks are the defaults.
     assert.deepEqual(p.render, {...DEFAULT_RENDER});

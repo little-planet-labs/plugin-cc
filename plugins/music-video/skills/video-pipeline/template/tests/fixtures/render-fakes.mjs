@@ -49,7 +49,7 @@ export const launchesByChunk = (log) => {
 };
 
 /**
- * A fake python. `--info` prints the page info ({fps, frames, cuts, blurWindows}); otherwise it is a chunk
+ * A fake python. `--info` logs {event: 'info', flags} and prints the page info ({fps, frames, cuts, blurWindows}); otherwise it is a chunk
  * worker: logs {event: 'start', pid, from, to, attempt, encoder}, sleeps `sleepMs`, writes the chunk named
  * at the end of --encoder, logs {event: 'end'} and exits. `behaviour` is a JS expression evaluated per
  * worker with `from` and `attempt` (1-based, counted from the log) in scope, giving
@@ -69,7 +69,7 @@ const get = (n) => flags[flags.indexOf(n) + 1];
 const log = ${JSON.stringify(log)};
 const say = (o) => fs.appendFileSync(log, JSON.stringify({...o, pid: o.pid ?? process.pid, time: now()}) + '\\n');
 if (flags.includes('--info')) {
-  say({event: 'info'});
+  say({event: 'info', flags});
   process.stdout.write(JSON.stringify({info: {fps: ${fps}, frames: ${frames}, cuts: ${JSON.stringify(cuts)}, blurWindows: ${JSON.stringify(blurWindows)}, warnings: []}}) + '\\n');
   process.exit(0);
 }

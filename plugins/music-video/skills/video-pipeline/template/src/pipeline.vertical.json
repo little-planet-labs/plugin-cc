@@ -1,0 +1,13 @@
+{
+  "$comment": "The vertical 9:16 (Instagram Reels / TikTok) version: pass --pipeline=src/pipeline.vertical.json to the scripts (?pipeline= in the page). Same song data and fps as src/pipeline.json; its own page size, scene registry (src/scenes-vertical/index.js, which each project writes) and master (out/music-video-vertical.mp4). tailSeconds 0.3 is an example default: set it per song so the song plus the tail stays under 180 s, the Instagram Reels 3:00 cap (a song of 180 s or more has to be cut down for Reels); 0 is fine when the vertical cut doesn't need the landscape tail. render.scale 1: the master is 1080x1920.",
+  "outputName": "music-video-vertical",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "fallbackSeconds": 60,
+  "tailSeconds": 0.3,
+  "audioCandidates": ["audio/track.wav", "audio/track.mp3"],
+  "scenes": "src/scenes-vertical/index.js",
+  "render": {"scale": 1, "crf": 17, "preset": "medium", "pool": 2, "chunkSeconds": 20, "shutter": 0.5, "format": "png", "audioBitrate": "256k", "retries": 2},
+  "draft": {"scale": 0.5, "crf": 23, "preset": "veryfast", "format": "jpeg"}
+}

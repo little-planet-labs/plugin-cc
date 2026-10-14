@@ -1,5 +1,5 @@
 // `pnpm render [--out <mp4>] [--scale=<s>] [--crf=<n>] [--preset=<name>] [--pool=<n>] [--chunk-seconds=<s>]
-//              [--frames=<a>-<b>] [--textonly] [--scenes=<module>]`
+//              [--frames=<a>-<b>] [--textonly] [--scenes=<module>] [--pipeline=<config>]`
 //
 // The master: out/<outputName>.mp4 (src/pipeline.json), 3840x2160 by default
 // (render.scale 2 on the 1920x1080 page), motion blur exactly where the page
@@ -26,18 +26,27 @@
 // out/<outputName>-textonly-frames-<a>-<b>.mp4, ...), so a partial render
 // never replaces a full one. A partial render may not write the master even
 // with an explicit --out.
+//
+// --pipeline=<config> (default src/pipeline.json) renders with another config
+// under src/, e.g. src/pipeline.vertical.json: its page size, fps, tail,
+// render and draft settings, and its outputName, so its master is
+// out/<its outputName>.mp4. A config may name its own scene registry
+// (`scenes`); --scenes naming that same registry (or no --scenes) is then a
+// master render, any other --scenes an alternate one. The page gets the same
+// config (?pipeline=), and its frame count is checked against the project's.
+// No output of one config ever lands on another config's master.
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {X264_PRESETS} from '../src/lib/pipeline.js';
+import {DEFAULT_PIPELINE_PATH, isConfigScenes, scenesInEffect, X264_PRESETS} from '../src/lib/pipeline.js';
 import {validateScenesPath} from '../src/lib/registry.js';
 import {capture, CliError, run, runCli, spawnGroup} from './lib/cli.mjs';
 import {chunkEncoderArgs, concatArgs, concatList, countFrames, muxArgs, probeVideo} from './lib/encode.mjs';
 import {playwrightEnv} from './lib/env.mjs';
 import {projectFile} from './lib/files.mjs';
-import {buildManifest, defaultRenderOutput, manifestPath, refuseMaster, sweepStaleTemp, tempPrefix} from './lib/outputs.mjs';
+import {buildManifest, defaultRenderOutput, manifestPath, refuseMasters, sweepStaleTemp, tempPrefix} from './lib/outputs.mjs';
 import {chunkRanges, poolSize, runPool} from './lib/pool.mjs';
-import {loadProject} from './lib/project.mjs';
+import {knownMasters, loadProject, parsePipelineFlag} from './lib/project.mjs';
 import {requireCaptureEnv} from './still.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,13 +56,14 @@ export const POOL_WARN_ABOVE = 2;
 
 export const RENDER_USAGE =
   'Usage: pnpm render [--out <mp4>] [--scale=<s>] [--crf=<n>] [--preset=<name>] [--pool=<n>] [--chunk-seconds=<s>] ' +
-  '[--frames=<a>-<b>] [--textonly] [--scenes=<module>]';
-export const DRAFT_USAGE = 'Usage: pnpm draft [--out <mp4>] [--pool=<n>] [--chunk-seconds=<s>] [--frames=<a>-<b>] [--scenes=<module>]';
+  '[--frames=<a>-<b>] [--textonly] [--scenes=<module>] [--pipeline=<config>]';
+export const DRAFT_USAGE =
+  'Usage: pnpm draft [--out <mp4>] [--pool=<n>] [--chunk-seconds=<s>] [--frames=<a>-<b>] [--scenes=<module>] [--pipeline=<config>]';
 
 /** Flags each script takes (render: the master; draft: the half-scale preview render). */
 const FLAGS = {
-  render: ['out', 'scale', 'crf', 'preset', 'pool', 'chunk-seconds', 'frames', 'textonly', 'scenes'],
-  draft: ['out', 'pool', 'chunk-seconds', 'frames', 'scenes'],
+  render: ['out', 'scale', 'crf', 'preset', 'pool', 'chunk-seconds', 'frames', 'textonly', 'scenes', 'pipeline'],
+  draft: ['out', 'pool', 'chunk-seconds', 'frames', 'scenes', 'pipeline'],
 };
 const BOOLEAN = new Set(['textonly']);
 
@@ -62,12 +72,13 @@ const BOOLEAN = new Set(['textonly']);
  * @param {string[]} argv
  * @param {'render' | 'draft'} [mode]
  * @returns {{out: string | null, scale: number | null, crf: number | null, preset: string | null, pool: number | null,
- *   chunkSeconds: number | null, frames: {a: number, b: number} | null, textonly: boolean, scenes: string | null}}
+ *   chunkSeconds: number | null, frames: {a: number, b: number} | null, textonly: boolean, scenes: string | null,
+ *   pipeline: string}}
  */
 export const parseRenderArgs = (argv, mode = 'render') => {
   const usage = mode === 'draft' ? DRAFT_USAGE : RENDER_USAGE;
   const allowed = FLAGS[mode];
-  const o = {out: null, scale: null, crf: null, preset: null, pool: null, chunkSeconds: null, frames: null, textonly: false, scenes: null};
+  const o = {out: null, scale: null, crf: null, preset: null, pool: null, chunkSeconds: null, frames: null, textonly: false, scenes: null, pipeline: DEFAULT_PIPELINE_PATH};
   const seen = new Set();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -122,6 +133,8 @@ export const parseRenderArgs = (argv, mode = 'render') => {
       } catch (err) {
         throw new CliError(err.message);
       }
+    } else if (name === 'pipeline') {
+      o.pipeline = parsePipelineFlag(v);
     }
   }
   return o;
@@ -137,13 +150,15 @@ const outputSize = (width, height, scale, where) => {
 };
 
 /**
- * Everything a render needs, from the parsed flags and src/pipeline.json: the settings in effect, the
- * frame range [first, last), the output (absolute) and the project.
+ * Everything a render needs, from the parsed flags and the pipeline config (--pipeline, default
+ * src/pipeline.json): the settings in effect, the frame range [first, last), the output (absolute), the
+ * scene registry in effect and the project. `scenes` stays what --scenes asked for (null: the page picks the
+ * config's own registry); `scenesPath` is the registry the page will load.
  * @param {ReturnType<typeof parseRenderArgs>} opts
  * @param {{root?: string, mode?: 'render' | 'draft'}} [where]
  */
 export const resolveRender = (opts, {root = projectRoot, mode = 'render'} = {}) => {
-  const {pipeline, project} = loadProject(root);
+  const {pipeline, project} = loadProject(root, opts.pipeline);
   // Fallback timing (no analysis, or one made for another file or fps) with a track present would put the
   // fallback length of video over the whole song. Only the no-track fallback renders, silent.
   if (project.timing === 'fallback' && project.audio !== null) {
@@ -167,19 +182,28 @@ export const resolveRender = (opts, {root = projectRoot, mode = 'render'} = {}) 
     last = opts.frames.b + 1;
   }
   const range = opts.frames ? {first, last} : null;
+  // An alternate registry: --scenes naming anything but the config's own `scenes` (src/pipeline.json has none,
+  // so there every --scenes is one).
+  const alternateScenes = !isConfigScenes(pipeline, opts.scenes);
   // Only a full plain render may write the master.
   const what = draft
     ? 'a draft'
     : opts.textonly
       ? 'a text-only render'
-      : opts.scenes
+      : alternateScenes
         ? 'an alternate-scenes render'
         : range
           ? 'a partial render (--frames)'
           : null;
-  const output = resolve(root, opts.out ?? defaultRenderOutput({outputName: pipeline.outputName, textonly: opts.textonly, scenes: opts.scenes, range, draft}));
+  const alternatePipeline = opts.pipeline !== DEFAULT_PIPELINE_PATH;
+  const output = resolve(
+    root,
+    opts.out ?? defaultRenderOutput({outputName: pipeline.outputName, textonly: opts.textonly, scenes: alternateScenes ? opts.scenes : null, range, draft, alternatePipeline}),
+  );
   if (!/\.mp4$/i.test(output)) throw new CliError(`--out must end in .mp4 (got ${opts.out})`);
-  if (what) refuseMaster(output, root, pipeline.outputName, what);
+  // The master render may write its own config's master; nothing writes another config's.
+  const masters = knownMasters(root, {path: opts.pipeline, outputName: pipeline.outputName});
+  refuseMasters(output, root, what ? masters : masters.filter((m) => m.path !== opts.pipeline), what ?? `a render with ${opts.pipeline}`);
   return {
     mode,
     project,
@@ -200,15 +224,23 @@ export const resolveRender = (opts, {root = projectRoot, mode = 'render'} = {}) 
     audioBitrate: pipeline.render.audioBitrate,
     textonly: opts.textonly,
     scenes: opts.scenes,
+    scenesPath: scenesInEffect(pipeline, opts.scenes),
+    pipelinePath: opts.pipeline,
     output,
   };
 };
+
+/** The capture.py / render_chunk.py flags that pick the page's config and registry (none for the defaults). */
+const pageFlags = (s) => [
+  ...(s.pipelinePath && s.pipelinePath !== DEFAULT_PIPELINE_PATH ? ['--pipeline', s.pipelinePath] : []),
+  ...(s.scenes ? ['--scenes', s.scenes] : []),
+];
 
 /** The page's own view of the video (frames, cuts, blur windows), read once before the pool starts. */
 const pageInfo = async (python, envRoot, root, s) => {
   const args = [join(envRoot, 'scripts/capture.py'), '--root', root, '--info', '--json'];
   if (s.textonly) args.push('--textonly');
-  if (s.scenes) args.push('--scenes', s.scenes);
+  args.push(...pageFlags(s));
   const out = await capture(python, args, {cwd: root, env: playwrightEnv(envRoot), label: 'capture --info'});
   try {
     return JSON.parse(out.trim().split('\n').pop()).info;
@@ -233,6 +265,9 @@ export const render = async (s, cleanup, {root = projectRoot, envRoot = root, py
   const started = Date.now();
   const name = s.mode === 'draft' ? 'draft' : 'render';
   if (s.scenes && !existsSync(join(root, s.scenes))) throw new CliError(`--scenes module ${s.scenes} does not exist`);
+  if (!s.scenes && s.pipeline?.scenes && !existsSync(join(root, s.pipeline.scenes))) {
+    throw new CliError(`scene registry ${s.pipeline.scenes} (the scenes of ${s.pipelinePath}) does not exist; pass --scenes=<module> to use another`);
+  }
   const python = pythonBin ?? requireCaptureEnv(envRoot);
   if (s.pool > POOL_WARN_ABOVE) {
     console.error(`${name}: warning: pool ${s.pool}: each worker runs a Chromium and an encoder; this machine-load default is ${POOL_WARN_ABOVE}`);
@@ -241,7 +276,7 @@ export const render = async (s, cleanup, {root = projectRoot, envRoot = root, py
 
   const info = await pageInfo(python, envRoot, root, s);
   if (info.frames !== project.frames) {
-    throw new CliError(`the page has ${info.frames} frames but the project data gives ${project.frames}; check src/data and src/pipeline.json`);
+    throw new CliError(`the page has ${info.frames} frames but the project data gives ${project.frames}; check src/data and ${s.pipelinePath ?? 'src/pipeline.json'}`);
   }
   const audio = project.audio === null ? null : projectFile(root, `public/${project.audio}`);
   if (project.audio !== null && audio === null) throw new CliError(`public/${project.audio} disappeared`);
@@ -285,7 +320,7 @@ export const render = async (s, cleanup, {root = projectRoot, envRoot = root, py
       ];
       if (!s.blur) args.push('--single');
       if (s.textonly) args.push('--textonly');
-      if (s.scenes) args.push('--scenes', s.scenes);
+      args.push(...pageFlags(s));
       if (sampleLog) args.push('--sample-log', join(sampleLog, `chunk-${c.from}.jsonl`));
       console.log(`${name}: ${label(c)} started${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
       return spawnGroup(python, args, {cwd: root, env: playwrightEnv(envRoot), label: label(c), stdio: ['ignore', 'inherit', 'inherit'], killGraceMs});
@@ -315,6 +350,8 @@ export const render = async (s, cleanup, {root = projectRoot, envRoot = root, py
       out: partial,
       startSeconds: first / fps,
       durationSeconds: (last - first) / fps,
+      // A range reaching into the tail (pipeline.json tailSeconds) runs past the audio: pad it with silence.
+      pad: last > project.audioFrames,
     }),
     {label: 'ffmpeg (mux)'},
   );
@@ -337,7 +374,8 @@ export const render = async (s, cleanup, {root = projectRoot, envRoot = root, py
     cuts: info.cuts,
     blurWindows: info.blurWindows,
     blur: s.blur,
-    source: s.scenes ?? 'src/scenes/index.js',
+    source: s.scenesPath ?? s.scenes ?? 'src/scenes/index.js',
+    pipeline: s.pipelinePath && s.pipelinePath !== DEFAULT_PIPELINE_PATH ? s.pipelinePath : null,
   });
   const manifestTmp = join(tmp, 'manifest.json');
   writeFileSync(manifestTmp, `${JSON.stringify(manifest, null, 2)}\n`);

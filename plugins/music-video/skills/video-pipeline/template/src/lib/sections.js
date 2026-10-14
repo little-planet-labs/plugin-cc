@@ -12,7 +12,8 @@
 
 /**
  * One entry of sections.json. A section runs from `start` until the next
- * section's start (the last runs to the end of the video).
+ * section's start (the last runs to the end of the video, through any
+ * pipeline.json tailSeconds after the audio).
  *
  * `variant` is free text the scene interprets. `pnpm align` writes:
  * - a repeated kind (verse, chorus, ...): its occurrence, "1", "2", ...
@@ -109,14 +110,19 @@ export const parseSections = (raw) => {
  * is Math.round(start * fps); each section runs to the next `from`; the last
  * runs to `durationInFrames`. The result tiles [0, durationInFrames) exactly.
  *
- * Throws, naming the section, when a section starts at or after the end
- * (sections.json is stale for this track) or rounds to <= 0 frames.
+ * Throws, naming the section, when a section starts at or after
+ * `audioFrames` (sections.json is stale for this track) or rounds to <= 0
+ * frames. `audioFrames` is the frame count of the audio, durationInFrames
+ * (the default) unless pipeline.json tailSeconds runs the video past the
+ * audio: the tail then belongs to the last section, which runs to the end of
+ * the video, and no section may start in it.
  * @param {readonly SectionSpec[]} specs
  * @param {number} fps
  * @param {number} durationInFrames
+ * @param {number} [audioFrames]
  * @returns {PlacedSection[]}
  */
-export const placeSections = (specs, fps, durationInFrames) => {
+export const placeSections = (specs, fps, durationInFrames, audioFrames = durationInFrames) => {
   if (specs.length === 0) throw new Error('placeSections: no sections to place');
   const froms = specs.map((s) => Math.round(s.start * fps));
   if (froms[0] !== 0) {
@@ -125,10 +131,14 @@ export const placeSections = (specs, fps, durationInFrames) => {
   const endSeconds = durationInFrames / fps;
   specs.forEach((s, i) => {
     const from = froms[i];
-    if (from >= durationInFrames) {
+    if (from >= audioFrames) {
       throw new Error(
-        `placeSections: section "${s.id}" starts at ${s.start}s (frame ${from}), at or after the end of the video ` +
-          `(${durationInFrames} frames, ${endSeconds.toFixed(2)}s). sections.json doesn't match this track; update it.`,
+        audioFrames === durationInFrames
+          ? `placeSections: section "${s.id}" starts at ${s.start}s (frame ${from}), at or after the end of the video ` +
+              `(${durationInFrames} frames, ${endSeconds.toFixed(2)}s). sections.json doesn't match this track; update it.`
+          : `placeSections: section "${s.id}" starts at ${s.start}s (frame ${from}), at or after the end of the audio ` +
+              `(${audioFrames} frames, ${(audioFrames / fps).toFixed(2)}s; the tail after it belongs to the last section). ` +
+              `sections.json doesn't match this track; update it.`,
       );
     }
   });

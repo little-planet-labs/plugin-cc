@@ -79,7 +79,8 @@ export const startPreview = (engine, t0) => {
   let generation = 0;
   const tick = async (gen, stamp) => {
     if (!playing || gen !== generation) return;
-    if (audio) t = audio.currentTime;
+    // The track drives the clock while it plays; past its end (a pipeline.json tailSeconds tail) the frame clock does.
+    if (audio && !audio.ended && t < P.audioEnd) t = audio.currentTime;
     else if (lastStamp !== null) t += (stamp - lastStamp) / 1000;
     lastStamp = stamp;
     if (t >= duration) {

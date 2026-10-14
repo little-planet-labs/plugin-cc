@@ -1,4 +1,4 @@
-// `pnpm beatmap [--force]`
+// `pnpm beatmap [--force] [--pipeline=<config>]`
 //
 // Writes creative/beatmap.md: a skeleton for planning the video against the
 // music, from the timing in effect (scripts/lib/project.mjs: the analysis with
@@ -27,11 +27,17 @@
 // stops, naming `pnpm analyze`, and writes nothing. It never replaces an existing
 // creative/beatmap.md without --force, and writes through a temp file renamed
 // into place.
+//
+// --pipeline=<config> plans against an alternate config (its fps is
+// src/pipeline.json's; its tailSeconds sets the Tail line) and writes
+// creative/beatmap-<outputName>.md instead, so the two plans never replace
+// each other.
 import {existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {CliError, runCli} from './lib/cli.mjs';
-import {loadProject, readJson} from './lib/project.mjs';
+import {DEFAULT_PIPELINE_PATH} from '../src/lib/pipeline.js';
+import {loadProject, parsePipelineFlag, readJson} from './lib/project.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -46,15 +52,27 @@ export const ACCENT_MIN_DB = 12;
 export const ACCENT_SPACING_SECONDS = 0.5;
 export const ACCENT_LIMIT = 24;
 
-/** Only `--force`. */
+/** The beatmap a config writes: creative/beatmap.md for src/pipeline.json, creative/beatmap-<outputName>.md otherwise. */
+export const beatmapPath = (pipelinePath, outputName) =>
+  pipelinePath === DEFAULT_PIPELINE_PATH ? BEATMAP_PATH : `creative/beatmap-${outputName}.md`;
+
+/** `--force` and `--pipeline=<config>`; `pipeline` is in the result only when given. */
 export const parseBeatmapArgs = (argv) => {
   let force = false;
+  let pipeline = null;
   for (const arg of argv) {
-    if (arg !== '--force') throw new CliError(`unexpected argument "${arg}" (the only flag is --force, to replace an existing ${BEATMAP_PATH})`);
+    if (arg.startsWith('--pipeline=')) {
+      if (pipeline !== null) throw new CliError('--pipeline given twice; pass it once');
+      pipeline = parsePipelineFlag(arg.slice('--pipeline='.length));
+      continue;
+    }
+    if (arg !== '--force') {
+      throw new CliError(`unexpected argument "${arg}" (the flags are --force, to replace an existing ${BEATMAP_PATH}, and --pipeline=<config>)`);
+    }
     if (force) throw new CliError('--force given twice; pass it once');
     force = true;
   }
-  return {force};
+  return pipeline === null ? {force} : {force, pipeline};
 };
 
 /**
@@ -132,10 +150,13 @@ const offset = (target, f) => (target === null ? '-' : `${target} (${target - f 
  * @param {{analysis: import('../src/lib/analysis.js').AudioAnalysis, lyrics: {id: string, text: string, start: number, end: number}[],
  *   sections: {id: string, scene: string, variant?: string, start: number, end: number, from: number, to: number}[] | null, fps: number}} o
  *   sections: the placed sections, or null when sections.json is empty (the whole song is one section).
+ *   frames: the video's frame count (project.frames); more than the analysis's when pipeline.json tailSeconds
+ *   adds a silent tail, which gets its own line. Defaults to the analysis's.
  */
-export const beatmapMarkdown = ({analysis, lyrics, sections, fps}) => {
+export const beatmapMarkdown = ({analysis, lyrics, sections, fps, frames}) => {
   const frame = (s) => Math.round(s * fps);
   const total = analysis.durationInFrames;
+  const videoFrames = frames ?? total;
   const beat = 60 / analysis.tempo;
   const beatFrames = analysis.beats.map(frame);
   const downbeatFrames = analysis.downbeats.map(frame);
@@ -151,6 +172,12 @@ export const beatmapMarkdown = ({analysis, lyrics, sections, fps}) => {
   out.push('## Timing', '');
   out.push(`- Track: ${analysis.source ?? 'none (audio-analysis.json is the no-track default; run `pnpm analyze`)'}`);
   out.push(`- Duration: ${s2(analysis.durationSeconds)} s, ${total} frames`);
+  if (videoFrames > total) {
+    out.push(
+      `- Tail: ${s2((videoFrames - total) / fps)} s of silence after the audio (pipeline.json tailSeconds), frames ${total}–${videoFrames}. ` +
+        `The video is ${videoFrames} frames; the last section runs through the tail.`,
+    );
+  }
   out.push(
     `- Tempo: ${analysis.tempo.toFixed(2)} BPM. Beat: ${beat.toFixed(3)} s (${(beat * fps).toFixed(2)} frames). ` +
       `Bar of ${analysis.beatsPerBar} beats: ${(beat * analysis.beatsPerBar).toFixed(3)} s (${(beat * analysis.beatsPerBar * fps).toFixed(2)} frames).`,
@@ -221,11 +248,12 @@ export const beatmapMarkdown = ({analysis, lyrics, sections, fps}) => {
   return out.join('\n');
 };
 
-/** Write creative/beatmap.md under `root`. Returns the path written. */
-export const beatmap = async ({force = false, root = projectRoot}, cleanup) => {
-  const target = join(root, BEATMAP_PATH);
-  if (existsSync(target) && !force) throw new CliError(`${BEATMAP_PATH} already exists; pass --force to replace it`);
-  const {sectionSpecs, project} = loadProject(root);
+/** Write creative/beatmap.md (beatmapPath for an alternate config) under `root`. Returns the path written. */
+export const beatmap = async ({force = false, pipeline: pipelinePath = DEFAULT_PIPELINE_PATH, root = projectRoot}, cleanup) => {
+  const {sectionSpecs, project, pipeline} = loadProject(root, pipelinePath);
+  const rel = beatmapPath(pipelinePath, pipeline.outputName);
+  const target = join(root, rel);
+  if (existsSync(target) && !force) throw new CliError(`${rel} already exists; pass --force to replace it`);
   const {fps} = project;
   for (const w of project.warnings) console.warn(`beatmap: warning: ${w}`);
   if (project.timing === 'fallback') {
@@ -240,7 +268,7 @@ export const beatmap = async ({force = false, root = projectRoot}, cleanup) => {
     }
     console.warn('beatmap: no track and no analysis: writing the fallback grid; run `pnpm analyze` for real tempo and energy');
   }
-  const markdown = beatmapMarkdown({analysis: project.analysis, lyrics: project.lyrics, sections: sectionSpecs.length === 0 ? null : project.sections, fps});
+  const markdown = beatmapMarkdown({analysis: project.analysis, lyrics: project.lyrics, sections: sectionSpecs.length === 0 ? null : project.sections, fps, frames: project.frames});
 
   mkdirSync(dirname(target), {recursive: true});
   const partial = join(dirname(target), `.beatmap.md.partial-${process.pid}`);

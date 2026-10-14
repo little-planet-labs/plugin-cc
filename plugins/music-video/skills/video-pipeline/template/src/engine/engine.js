@@ -7,7 +7,7 @@
 import {parseAudioAnalysis, parseTimingOverrides} from '../lib/analysis.js';
 import {parseBrand, toPageUrl} from '../lib/brand.js';
 import {parseLyrics} from '../lib/lyrics.js';
-import {parsePipeline} from '../lib/pipeline.js';
+import {checkAlternatePipeline, DEFAULT_PIPELINE_PATH, parsePipeline, scenesInEffect} from '../lib/pipeline.js';
 import {resolveProject} from '../lib/project.js';
 import {resolveScene, validateRegistry} from '../lib/registry.js';
 import {parseSections} from '../lib/sections.js';
@@ -45,20 +45,35 @@ const exists = async (path) => {
   }
 };
 
-/** Every data file, parsed, plus the timing in effect. */
-const loadProject = async () => {
-  const [pipelineRaw, brandRaw, analysisRaw, defaultRaw, overridesRaw, lyricsRaw, sectionsRaw] = await Promise.all(
+/** parsePipeline, with errors naming `path` (the parser's own messages say "pipeline.json"). */
+const parsePipelineAt = (raw, path) => {
+  try {
+    return parsePipeline(raw);
+  } catch (err) {
+    throw path === DEFAULT_PIPELINE_PATH ? err : new Error(err.message.replace(/^pipeline\.json:/, `${path}:`));
+  }
+};
+
+/**
+ * Every data file, parsed, plus the timing in effect. `pipelinePath` (validated by main.js) is the config:
+ * src/pipeline.json, or an alternate one, which is checked against src/pipeline.json (same fps, own outputName).
+ */
+const loadProject = async (pipelinePath) => {
+  const alternate = pipelinePath !== DEFAULT_PIPELINE_PATH;
+  const [pipelineRaw, brandRaw, analysisRaw, defaultRaw, overridesRaw, lyricsRaw, sectionsRaw, baseRaw] = await Promise.all(
     [
-      'src/pipeline.json',
+      pipelinePath,
       'src/brand.json',
       'src/data/audio-analysis.json',
       'src/data/audio-analysis.default.json',
       'src/data/timing-overrides.json',
       'src/data/lyrics.json',
       'src/data/sections.json',
+      ...(alternate ? [DEFAULT_PIPELINE_PATH] : []),
     ].map(fetchJson),
   );
-  const pipeline = parsePipeline(pipelineRaw);
+  const pipeline = parsePipelineAt(pipelineRaw, pipelinePath);
+  if (alternate) checkAlternatePipeline(pipeline, parsePipeline(baseRaw), pipelinePath);
   const brand = parseBrand(brandRaw);
   const present = [];
   await Promise.all(
@@ -79,7 +94,8 @@ const loadProject = async () => {
 };
 
 /**
- * @param {{render: boolean, textonly: boolean, scenesUrl: string, scenesPath: string}} mode
+ * @param {{render: boolean, textonly: boolean, pipelinePath: string, scenesPath: string | null, toUrl: (path: string) => string}} mode
+ *   scenesPath null: the config's `scenes`, else src/scenes/index.js. toUrl turns a project path into the URL to import.
  */
 export const createEngine = (mode) => {
   let ready = false;
@@ -217,7 +233,7 @@ export const createEngine = (mode) => {
   };
 
   const boot = async (initialT) => {
-    const data = await loadProject();
+    const data = await loadProject(mode.pipelinePath);
     P = data.project;
     shutter = data.pipeline.render.shutter;
     warnings.push(...P.warnings);
@@ -228,15 +244,17 @@ export const createEngine = (mode) => {
     const theme = buildTheme(brand, {width: P.width, height: P.height});
     const L = layers();
     fx = new FxLayer(L, P.fps, theme.colors.flash);
-    lyricLayer = new LyricLayer({txt: L.txt, lines: P.lyrics, theme, page: {width: P.width, height: P.height}, fps: P.fps, duration: P.duration});
+    // Lyrics are bound to the audio: a line is gone by the end of the audio, not the end of a tail (pipeline.json tailSeconds).
+    lyricLayer = new LyricLayer({txt: L.txt, lines: P.lyrics, theme, page: {width: P.width, height: P.height}, fps: P.fps, duration: P.audioEnd});
 
+    const scenesPath = scenesInEffect(data.pipeline, mode.scenesPath);
     let mod;
     try {
-      mod = await import(mode.scenesUrl);
+      mod = await import(mode.toUrl(scenesPath));
     } catch (err) {
-      throw new Error(`scene registry ${mode.scenesPath} failed to load: ${err.message}`);
+      throw new Error(`scene registry ${scenesPath} failed to load: ${err.message}`);
     }
-    const registry = validateRegistry(mod, mode.scenesPath);
+    const registry = validateRegistry(mod, scenesPath);
     const pending = [];
     const host = {
       project: P,
@@ -330,7 +348,7 @@ export const createEngine = (mode) => {
     get info() {
       return P === null
         ? null
-        : {fps: P.fps, width: P.width, height: P.height, duration: P.duration, frames: P.frames, audio: P.audio, timing: P.timing};
+        : {fps: P.fps, width: P.width, height: P.height, duration: P.duration, frames: P.frames, audioEnd: P.audioEnd, audioFrames: P.audioFrames, audio: P.audio, timing: P.timing};
     },
     get project() {
       return P;

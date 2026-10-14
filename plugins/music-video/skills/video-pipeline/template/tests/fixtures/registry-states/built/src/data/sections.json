@@ -1,0 +1,6 @@
+[
+  {"id": "intro", "scene": "instrumental", "start": 0, "variant": "lead-in"},
+  {"id": "verse-1", "scene": "verse", "start": 8, "variant": "1"},
+  {"id": "chorus-1", "scene": "chorus", "start": 24, "variant": "1"},
+  {"id": "outro", "scene": "instrumental", "start": 40, "variant": "tail"}
+]

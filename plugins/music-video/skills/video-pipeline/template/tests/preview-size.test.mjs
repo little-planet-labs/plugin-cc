@@ -3,18 +3,22 @@
 // refused, the encode keeps the master's video format, and nothing but the
 // finished preview is ever left behind.
 import assert from 'node:assert/strict';
-import {existsSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {after, before, describe, it} from 'node:test';
 import {
   main as previewMain,
   parsePreviewArgs,
   PREVIEW_FILTER,
+  PREVIEW_FILTER_PORTRAIT,
   PREVIEW_LIMIT_BYTES,
   PREVIEW_MAX_VIDEO_KBPS,
   PREVIEW_TARGET_BYTES,
   previewBitrates,
+  previewSize,
 } from '../scripts/preview.mjs';
+import {spawnSync} from 'node:child_process';
+import {hasFfmpeg} from './fixtures/qa-clips.mjs';
 import {fakeBin, freshDir, silence} from './fixtures/cli-fakes.mjs';
 import {makeProject} from './fixtures/engine-project.mjs';
 
@@ -51,8 +55,8 @@ describe('preview', () => {
   });
 
   // The input probe: JSON with one video stream and the format duration.
-  const ffprobe = (seconds, exitCode = 0) =>
-    fakeBin('ffprobe', `process.stdout.write(${JSON.stringify(JSON.stringify({streams: [{width: 3840, height: 2160, r_frame_rate: '30/1'}], format: {duration: seconds}}))}); process.exit(${exitCode});`);
+  const ffprobe = (seconds, exitCode = 0, {width = 3840, height = 2160} = {}) =>
+    fakeBin('ffprobe', `process.stdout.write(${JSON.stringify(JSON.stringify({streams: [{width, height, r_frame_rate: '30/1'}], format: {duration: seconds}}))}); process.exit(${exitCode});`);
   // Pass 1 writes its log next to the passlogfile; pass 2 writes the output (last arg). Both record their args.
   const ffmpegTwoPass = (pass2Exit, bytes = 10, argsFile = null) =>
     fakeBin(
@@ -83,6 +87,30 @@ fs.writeFileSync(args[args.length - 1], Buffer.alloc(${bytes})); process.exit(${
       ['high', '3.1', 'yuv420p', 'tv', 'bt709', 'bt709', 'bt709', 'aac']);
     assert.equal(v('-b:v'), `${previewBitrates(120.5).videoKbps}k`);
   });
+  it('720p is the short side: landscape and square inputs are 720 high (unchanged), portrait inputs 720 wide', () => {
+    assert.deepEqual(previewSize({width: 3840, height: 2160}), {width: 1280, height: 720, filter: PREVIEW_FILTER});
+    assert.deepEqual(previewSize({width: 1920, height: 1080}), {width: 1280, height: 720, filter: PREVIEW_FILTER});
+    assert.deepEqual(previewSize({width: 960, height: 540}), {width: 1280, height: 720, filter: PREVIEW_FILTER});
+    assert.deepEqual(previewSize({width: 1000, height: 1000}), {width: 720, height: 720, filter: PREVIEW_FILTER});
+    assert.deepEqual(previewSize({width: 1080, height: 1920}), {width: 720, height: 1280, filter: PREVIEW_FILTER_PORTRAIT});
+    assert.deepEqual(previewSize({width: 540, height: 960}), {width: 720, height: 1280, filter: PREVIEW_FILTER_PORTRAIT});
+    assert.equal(PREVIEW_FILTER_PORTRAIT, PREVIEW_FILTER.replace(/^scale=-2:720:/, 'scale=720:-2:'));
+  });
+  it('a portrait input is encoded 720 wide at the landscape level and the same bitrate, and still refused at 30 MB', async () => {
+    const c = setup();
+    const argsFile = join(freshDir('args'), 'ffmpeg.jsonl');
+    const portrait = {width: 1080, height: 1920};
+    assert.equal(await runPreview(c, {ffmpegBin: ffmpegTwoPass(0, 10, argsFile), ffprobeBin: ffprobe('39.6', 0, portrait)}), 0);
+    const [pass1, pass2] = readFileSync(argsFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    for (const pass of [pass1, pass2]) {
+      const v = (f) => pass[pass.indexOf(f) + 1];
+      assert.equal(v('-vf'), PREVIEW_FILTER_PORTRAIT);
+      assert.deepEqual([v('-level:v'), v('-b:v')], ['3.1', `${previewBitrates(39.6).videoKbps}k`]);
+    }
+    const over = setup();
+    assert.equal(await runPreview(over, {ffmpegBin: ffmpegTwoPass(0, PREVIEW_LIMIT_BYTES), ffprobeBin: ffprobe('39.6', 0, portrait)}), 1);
+    assert.deepEqual(readdirSync(over.dir), ['in.mp4']);
+  });
   it('pass 2 failing: exit 1, no partial, no output, temp dir removed', async () => {
     const c = setup();
     assert.equal(await runPreview(c, {ffmpegBin: ffmpegTwoPass(1), ffprobeBin: ffprobe('120')}), 1);
@@ -108,5 +136,26 @@ fs.writeFileSync(args[args.length - 1], Buffer.alloc(${bytes})); process.exit(${
     assert.equal(await runPreview(c, {ffmpegBin: ffmpegTwoPass(0), ffprobeBin: ffprobe('120')}), 1);
     assert.deepEqual(readdirSync(c.dir), []);
     assert.deepEqual(readdirSync(c.tmpRoot), []);
+  });
+});
+
+describe('preview of a real portrait video', {skip: hasFfmpeg ? false : 'ffmpeg/ffprobe not on PATH'}, () => {
+  it('a 9:16 master previews at 720x1280, under the 30 MB limit', async () => {
+    const dir = freshDir('portrait-preview');
+    const input = join(dir, 'vertical.mp4');
+    const make = spawnSync('ffmpeg', [
+      '-v', 'error', '-y',
+      '-f', 'lavfi', '-i', 'testsrc2=size=1080x1920:rate=30:duration=6,noise=alls=40:allf=t',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=6',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+      input,
+    ]);
+    assert.equal(make.status, 0, String(make.stderr));
+    const output = join(dir, 'vertical-preview.mp4');
+    assert.equal(await silence(() => previewMain(['--in', input, '--out', output], {root: p.root, tmpRoot: freshDir('tmp')})), 0);
+    const probe = JSON.parse(spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', output], {encoding: 'utf8'}).stdout).streams[0];
+    assert.deepEqual([probe.width, probe.height], [720, 1280]);
+    const {size} = statSync(output);
+    assert.ok(size > 0 && size < PREVIEW_LIMIT_BYTES, `${size} bytes`);
   });
 });

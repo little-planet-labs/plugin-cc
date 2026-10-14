@@ -1,4 +1,4 @@
-// `pnpm critique --tag <name> [--in <mp4>] [--strips=<s,...>] [--overview-every=2] [--phone-every=4]`
+// `pnpm critique --tag <name> [--in <mp4>] [--strips=<s,...>] [--overview-every=2] [--phone-every=4] [--pipeline=<config>]`
 //
 // QA contact sheets for one critique round, written to out/critique/<tag>/:
 // - overview_NN.png: a frame every --overview-every seconds (default 2) from
@@ -29,15 +29,19 @@
 // swapped in for the old one with directory renames, so the tag directory is
 // always one run's complete set of sheets, never a mix; sheets of an earlier
 // run that this run didn't produce are gone with it. A failed run leaves the
-// tag directory as it was. Defaults: --in out/<outputName>.mp4.
+// tag directory as it was. Defaults: --in out/<outputName>.mp4 of the config
+// (--pipeline, default src/pipeline.json; its fps and tail also set the
+// default strips' frames). Tile sizes keep the video's aspect, so a 9:16
+// video gets tall tiles at the same widths.
 import {cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {CliError, run, runCli} from './lib/cli.mjs';
 import {requireVenvPython} from './lib/env.mjs';
+import {DEFAULT_PIPELINE_PATH} from '../src/lib/pipeline.js';
 import {loadProject} from './lib/project.mjs';
-import {defaultMaster, manifestFor, parseFlags, probeVideoInfo} from './lib/qa.mjs';
+import {manifestFor, parseFlags, probeVideoInfo, qaInput} from './lib/qa.mjs';
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptsDir, '..');
@@ -50,7 +54,7 @@ export const STRIP = {width: 320, cols: 6, rows: 2};
 export const STRIP_FRAMES = 12;
 export const STRIP_LEAD_SECONDS = 0.1;
 
-const USAGE = '--tag <name> [--in <mp4>] [--strips=<s,...>] [--overview-every=<s>] [--phone-every=<s>]';
+const USAGE = '--tag <name> [--in <mp4>] [--strips=<s,...>] [--overview-every=<s>] [--phone-every=<s>] [--pipeline=<config>]';
 /** One path segment: letters, digits, '.', '_', '-', not starting with '.' (so never '.' or '..'). */
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -62,11 +66,11 @@ const positiveSeconds = (name, raw) => {
 
 /**
  * `--tag` (required), `--in`, `--strips`, `--overview-every`,
- * `--phone-every`, each as `--flag value` or `--flag=value`, at most once.
+ * `--phone-every`, `--pipeline`, each as `--flag value` or `--flag=value`, at most once.
  * `strips` is null (use the lyric and section starts) or seconds.
  */
 export const parseCritiqueArgs = (argv, {root = projectRoot} = {}) => {
-  const {values} = parseFlags(argv, {values: ['--in', '--tag', '--strips', '--overview-every', '--phone-every'], usage: USAGE});
+  const {values} = parseFlags(argv, {values: ['--in', '--tag', '--strips', '--overview-every', '--phone-every', '--pipeline'], usage: USAGE});
   const tag = values.get('--tag');
   if (tag === undefined) throw new CliError('--tag is required: the round name, e.g. --tag r1 (sheets go to out/critique/<tag>/)');
   if (!TAG.test(tag)) {
@@ -82,9 +86,9 @@ export const parseCritiqueArgs = (argv, {root = projectRoot} = {}) => {
   }
   const overviewEvery = values.has('--overview-every') ? positiveSeconds('--overview-every', values.get('--overview-every')) : 2;
   const phoneEvery = values.has('--phone-every') ? positiveSeconds('--phone-every', values.get('--phone-every')) : 4;
-  // Resolved last, after every check: the default reads src/pipeline.json.
-  const input = values.has('--in') ? resolve(root, values.get('--in')) : defaultMaster(root);
-  return {input, tag, strips, overviewEvery, phoneEvery};
+  // Resolved last, after every check: the default reads the pipeline config.
+  const {input, pipeline} = qaInput(values, root);
+  return {input, tag, strips, overviewEvery, phoneEvery, pipeline};
 };
 
 /** A tile label: the frame's time as m:ss.cc and its frame number, e.g. "1:02.50 f1875". */
@@ -230,6 +234,7 @@ export const critique = async (
     strips: stripSeconds,
     overviewEvery = 2,
     phoneEvery = 4,
+    pipeline = DEFAULT_PIPELINE_PATH,
     root = projectRoot,
     tmpRoot = tmpdir(),
     ffmpegBin = 'ffmpeg',
@@ -245,7 +250,7 @@ export const critique = async (
   const explicit = stripSeconds !== null && stripSeconds !== undefined;
   let seconds = stripSeconds;
   if (!explicit) {
-    const {project} = loadProject(root);
+    const {project} = loadProject(root, pipeline);
     seconds = [...project.lyrics.map((l) => l.start), ...project.sections.map((s) => s.start)];
   }
   const video = await probeVideoInfo(ffprobeBin, input);

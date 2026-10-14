@@ -1,4 +1,4 @@
-// `pnpm pops [--in <mp4>] [--cuts=<frame,...>|auto] [--ratio=3] [--fail]`
+// `pnpm pops [--in <mp4>] [--cuts=<frame,...>|auto] [--ratio=3] [--fail] [--pipeline=<config>]`
 //
 // Lists pop spikes and one-frame flashes in a rendered video: the glitches a
 // viewer sees as a jump or a blink, such as a layer that renders one frame
@@ -23,14 +23,15 @@
 // produce one, so a flash next to a cut is a stray frame. --fail exits 1 when
 // any pop or flash isn't excused. Frames are the video's; a partial render's
 // manifest says which page frame its frame 0 is, and the header prints it.
-// Defaults: --in out/<outputName>.mp4, --ratio 3.
+// Defaults: --in out/<outputName>.mp4 of the config (--pipeline, default
+// src/pipeline.json), --ratio 3.
 import {existsSync, mkdtempSync, realpathSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {capture, CliError, run, runCli} from './lib/cli.mjs';
 import {requireVenvPython} from './lib/env.mjs';
-import {defaultMaster, manifestFor, parseFlags, probeVideoInfo, requireManifest} from './lib/qa.mjs';
+import {manifestFor, parseFlags, probeVideoInfo, qaInput, requireManifest} from './lib/qa.mjs';
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptsDir, '..');
@@ -46,14 +47,14 @@ export const FLASH_SKIP_RATIO = 0.35;
 /** A pop this many frames or fewer from a listed cut is that cut. */
 export const CUT_TOLERANCE_FRAMES = 1;
 
-const USAGE = '[--in <mp4>] [--cuts=<frame,...>|auto] [--ratio=<n>] [--fail]';
+const USAGE = '[--in <mp4>] [--cuts=<frame,...>|auto] [--ratio=<n>] [--fail] [--pipeline=<config>]';
 
 /**
- * `--in`, `--cuts`, `--ratio` (as `--flag value` or `--flag=value`, at most
- * once) and the bare `--fail`. `cuts` is a list of frames or 'auto'.
+ * `--in`, `--cuts`, `--ratio`, `--pipeline` (as `--flag value` or `--flag=value`, at most
+ * once) and the bare `--fail`. `cuts` is a list of frames or 'auto'. --pipeline only picks the default --in.
  */
 export const parsePopsArgs = (argv, {root = projectRoot} = {}) => {
-  const {values, switches} = parseFlags(argv, {values: ['--in', '--cuts', '--ratio'], switches: ['--fail'], usage: USAGE});
+  const {values, switches} = parseFlags(argv, {values: ['--in', '--cuts', '--ratio', '--pipeline'], switches: ['--fail'], usage: USAGE});
   let cuts = [];
   const cutsRaw = values.get('--cuts');
   if (cutsRaw === 'auto') cuts = 'auto';
@@ -69,7 +70,7 @@ export const parsePopsArgs = (argv, {root = projectRoot} = {}) => {
     ratio = Number(ratioRaw);
     if (!/^\d+(\.\d+)?$/.test(ratioRaw) || !(ratio > 1)) throw new CliError(`--ratio must be a number > 1 (got ${ratioRaw})`);
   }
-  const input = values.has('--in') ? resolve(root, values.get('--in')) : defaultMaster(root);
+  const {input} = qaInput(values, root);
   return {input, cuts, ratio, fail: switches.has('--fail')};
 };
 

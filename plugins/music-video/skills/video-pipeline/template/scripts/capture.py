@@ -3,7 +3,7 @@ frame n into pixels. Used by `pnpm still` and by the render workers.
 
 Importable (async API):
 
-    cap = Capture(root, scale=2.0, textonly=False, scenes=None, fmt="png")
+    cap = Capture(root, scale=2.0, textonly=False, scenes=None, fmt="png", pipeline=None)
     info = await cap.open()          # {fps, width, height, frames, duration, cuts, blurWindows, warnings, audio, timing, scale}
     rgb = await cap.frame(n)         # numpy uint8 (round(height*scale), round(width*scale), 3)
     await cap.close()
@@ -36,9 +36,14 @@ The Chromium flags and the two-rAF wait are ported from the
 howseen-ai/claude-motion-design render template (MIT, see NOTICE.md); its
 clip.scale screenshot is replaced by the session override described above.
 
+`pipeline` (default None: src/pipeline.json) is an alternate config under
+src/, e.g. "src/pipeline.vertical.json": the page gets ?pipeline=<it> and the
+viewport is its width x height. The path must pass the same rule the page and
+the Node scripts apply (pipeline_path) and name a project file.
+
 CLI:
     python scripts/capture.py [--root DIR] [--scale S] [--textonly] [--scenes MODULE]
-        [--format png|jpeg] (--frame N [--frame N ...] | --frames A,B,C | --frames A-B)
+        [--pipeline CONFIG] [--format png|jpeg] (--frame N [--frame N ...] | --frames A,B,C | --frames A-B)
         [--out FILE | --out-dir DIR] [--info] [--json]
 """
 
@@ -50,6 +55,7 @@ import base64
 import io
 import json
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -95,6 +101,8 @@ CONTENT_TYPES = {
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
+DEFAULT_PIPELINE = "src/pipeline.json"
+
 
 class CaptureError(Exception):
     """A capture failure with a message meant for the user."""
@@ -127,6 +135,25 @@ def project_file(root: Path, url: str) -> Path | None:
     if not rel.parts or any(p.startswith(".") for p in rel.parts) or not target.is_file():
         return None
     return target
+
+
+# The only pipeline config paths, the pattern of src/lib/pipeline.js PIPELINE_PATH: src/pipeline.json or
+# src/pipeline.<name>.json, <name> lowercase letters, digits and hyphens.
+PIPELINE_PATH = re.compile(r"src/pipeline(?:\.[a-z0-9][a-z0-9-]*)?\.json")
+
+
+def pipeline_path(value: str) -> str:
+    """A pipeline config path checked by the rule of src/lib/pipeline.js validatePipelinePath (exactly
+    PIPELINE_PATH, after dropping a leading "./"). Returns it without the "./"; raises CaptureError otherwise."""
+    s = str(value)
+    if s.startswith("./"):
+        s = s[2:]
+    if not PIPELINE_PATH.fullmatch(s):
+        raise CaptureError(
+            "pipeline must be src/pipeline.json or src/pipeline.<name>.json, <name> in lowercase letters, digits and "
+            f'hyphens, like "src/pipeline.vertical.json" (got {value!r})'
+        )
+    return s
 
 
 def crossed_cut(samples: list[float], tc: float, cuts: list[float]) -> float | None:
@@ -192,8 +219,10 @@ class Capture:
         jpeg_quality: int = 95,
         timeout: float = 120.0,
         launch_args: tuple[str, ...] = (),
+        pipeline: str | None = None,
     ) -> None:
         self.root = Path(root).resolve()
+        self.pipeline = None if pipeline is None else pipeline_path(pipeline)
         self.scale = float(scale)
         self.textonly = textonly
         self.scenes = scenes
@@ -217,12 +246,21 @@ class Capture:
     async def __aexit__(self, *exc) -> None:
         await self.close()
 
+    @property
+    def pipeline_name(self) -> str:
+        return self.pipeline or DEFAULT_PIPELINE
+
     def _page_size(self) -> tuple[int, int]:
+        name = self.pipeline_name
+        # The same containment rule as the page's own requests: a real project file, no dot segment.
+        path = project_file(self.root, f"{ORIGIN}/{name}")
         try:
-            pipeline = json.loads((self.root / "src/pipeline.json").read_text("utf-8"))
+            if path is None:
+                raise OSError(f"{name} is not a file in the project")
+            pipeline = json.loads(path.read_text("utf-8"))
             return int(pipeline["width"]), int(pipeline["height"])
         except (OSError, ValueError, KeyError, TypeError) as err:
-            raise CaptureError(f"src/pipeline.json could not be read for the page size ({err})") from err
+            raise CaptureError(f"{name} could not be read for the page size ({err})") from err
 
     async def _serve(self, route) -> None:
         request = route.request
@@ -271,6 +309,8 @@ class Capture:
             query["textonly"] = "1"
         if self.scenes:
             query["scenes"] = self.scenes
+        if self.pipeline and self.pipeline != DEFAULT_PIPELINE:
+            query["pipeline"] = self.pipeline
         url = f"{ORIGIN}/index.html?{urlencode(query)}"
         self._pw = await async_playwright().start()
         try:
@@ -303,7 +343,7 @@ class Capture:
         if state["error"]:
             raise CaptureError(f"page error: {state['error']}")
         if state["width"] != width or state["height"] != height:
-            raise CaptureError(f"the page is {state['width']}x{state['height']} but src/pipeline.json says {width}x{height}")
+            raise CaptureError(f"the page is {state['width']}x{state['height']} but {self.pipeline_name} says {width}x{height}")
         await page.evaluate("document.fonts.ready")
         await page.add_style_tag(content=NO_MOTION_CSS)
         await page.evaluate("document.getAnimations().forEach(a => a.pause())")
@@ -433,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scale", type=float, default=1.0, help="device scale factor (default 1)")
     p.add_argument("--textonly", action="store_true", help="lyric layer only, on black")
     p.add_argument("--scenes", help="alternate scene registry module (project-relative path)")
+    p.add_argument("--pipeline", help="alternate pipeline config under src/ (default src/pipeline.json)")
     p.add_argument("--format", choices=["png", "jpeg"], default="png")
     p.add_argument("--frame", type=int, action="append", help="absolute frame (repeatable)")
     p.add_argument("--frames", help="frames as A,B,C or A-B")
@@ -454,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
 
     async def go() -> int:
         cap = Capture(args.root, scale=args.scale, textonly=args.textonly, scenes=args.scenes, fmt=args.format,
-                      launch_args=tuple(args.chromium_arg))
+                      launch_args=tuple(args.chromium_arg), pipeline=args.pipeline)
         written: list[str] = []
         try:
             info = await cap.open()

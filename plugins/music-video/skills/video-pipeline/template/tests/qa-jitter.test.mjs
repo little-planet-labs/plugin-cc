@@ -48,6 +48,7 @@ describe('jitter arguments', () => {
       max: null,
       threshold: 225,
       scenes: null,
+      pipeline: null,
     });
     const all = parseJitterArgs(['--all-lines', '--in=t.mp4', '--crop=0,0,100,50', '--max=0.5', '--scenes', './tests/x.js'], {root: '/r'});
     assert.deepEqual([all.input, all.crop, all.max, all.scenes], ['/r/t.mp4', {x: 0, y: 0, w: 100, h: 50}, 0.5, 'tests/x.js']);

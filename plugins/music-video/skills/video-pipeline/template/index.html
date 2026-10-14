@@ -9,7 +9,8 @@
   The video as a time-seeked page. Captured frame by frame by scripts/capture.py
   (index.html?render=1): frame n is the page after window.__mv.seek(n / fps).
   Open it through `pnpm serve` for the interactive preview (ES modules don't
-  load from file://). Query: render=1, textonly=1, scenes=<module>, t=<seconds>.
+  load from file://). Query: render=1, textonly=1, scenes=<module>, pipeline=<config under src/>,
+  t=<seconds>.
   Layer stack: #world (z1) < #fx (z2) < #txt (z3, lyrics only) < #over (z4).
 -->
 <style>

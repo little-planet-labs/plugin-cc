@@ -29,6 +29,7 @@ describe('critique arguments and plan', () => {
       strips: null,
       overviewEvery: 2,
       phoneEvery: 4,
+      pipeline: 'src/pipeline.json',
     });
     assert.deepEqual(parseCritiqueArgs(['--in=out/d.mp4', '--tag=r2', '--strips=1.5,30', '--overview-every', '1', '--phone-every=0.5'], {root: '/r'}), {
       input: '/r/out/d.mp4',
@@ -36,6 +37,7 @@ describe('critique arguments and plan', () => {
       strips: [1.5, 30],
       overviewEvery: 1,
       phoneEvery: 0.5,
+      pipeline: 'src/pipeline.json',
     });
     const r = {root: '/r'};
     assert.throws(() => parseCritiqueArgs(['--in=x.mp4'], r), /--tag is required/);

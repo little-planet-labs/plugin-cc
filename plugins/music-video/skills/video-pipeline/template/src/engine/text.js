@@ -14,7 +14,7 @@ import {lineWords} from '../lib/lyric-timing.js';
 import {LyricRegistrations, unregisteredLinesError} from '../lib/registry.js';
 import {hashString, rng} from '../lib/rng.js';
 import {ENTER_LEAD_FRAMES, publicSchedules, scheduleLines} from '../lib/exits.js';
-import {ENTRANCES, enterPose, enterProgress, exitPose, EXITS, HELD} from '../lib/text-motion.js';
+import {ENTRANCES, enterPose, enterProgress, exitPose, EXITS, HELD, motionScale} from '../lib/text-motion.js';
 import {setStyle} from './layers.js';
 
 /** Seconds of tolerance when comparing t with schedule times (far below a frame at any fps). */
@@ -203,8 +203,7 @@ export class LyricLayer {
 
   /** Draw every registered line at t. */
   draw(t) {
-    const sx = this.page.width / 1920;
-    const sy = this.page.height / 1080;
+    const {sx, sy} = motionScale(this.page);
     for (const d of this.drawn.values()) {
       const {sched, s} = d;
       // Times compare with a hair of tolerance: t = n / fps and a bound like next - 2 / fps may differ in the last bit.

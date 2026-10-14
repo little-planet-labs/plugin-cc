@@ -6,12 +6,12 @@ arithmetic and the reporting; this script only drives the page through
 scripts/capture.py's Capture (text-only mode: the world, fx and overlay layers
 draw nothing on an opaque black stage, the lyric layer as usual).
 
-    still_test.py lines --root DIR [--scenes MODULE]
+    still_test.py lines --root DIR [--scenes MODULE] [--pipeline CONFIG]
         Print {"info": {...}, "lines": window.__mv.lines()} as one JSON line,
         each line with its words' schedules. Times that aren't finite come back as null.
 
     still_test.py check --root DIR --plan PLAN.json
-        PLAN = {"scale": S, "scenes": MODULE | null,
+        PLAN = {"scale": S, "scenes": MODULE | null, "pipeline": CONFIG | null (optional),
                 "checks": [{"id": LINE, "word": K, "frames": [n, ...]}, ...]}.
         For each check: show only word K of line LINE (an injected !important
         visibility rule hides every other lyric line, #txt .ly whose data-line
@@ -92,7 +92,7 @@ def lit_pixels(img: np.ndarray) -> int:
 
 
 async def cmd_lines(args) -> int:
-    cap = Capture(args.root, scale=1.0, textonly=True, scenes=args.scenes)
+    cap = Capture(args.root, scale=1.0, textonly=True, scenes=args.scenes, pipeline=args.pipeline)
     try:
         await cap.open()
         lines = clean_lines(await cap.page.evaluate("window.__mv.lines()"))
@@ -105,7 +105,7 @@ async def cmd_lines(args) -> int:
 
 async def cmd_check(args) -> int:
     plan = json.loads(Path(args.plan).read_text("utf-8"))
-    cap = Capture(args.root, scale=float(plan["scale"]), textonly=True, scenes=plan.get("scenes"))
+    cap = Capture(args.root, scale=float(plan["scale"]), textonly=True, scenes=plan.get("scenes"), pipeline=plan.get("pipeline"))
     results = []
     try:
         await cap.open()
@@ -151,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     lp = sub.add_parser("lines")
     lp.add_argument("--root", required=True)
     lp.add_argument("--scenes")
+    lp.add_argument("--pipeline")
     cp = sub.add_parser("check")
     cp.add_argument("--root", required=True)
     cp.add_argument("--plan", required=True)
