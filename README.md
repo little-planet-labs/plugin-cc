@@ -203,14 +203,23 @@ Makes a kinetic-typography music video about any company. It researches the comp
 ```
 company → research → topic menu → lyrics + Suno prompt → your Suno song → alignment → direction + beat map → drafts ⇄ critic → video
                                                                                      (optional) → vertical cut, shorts, posters
+finished video → Shorts pitch menu → your Suno takes → one project per Short → direction → drafts ⇄ critic → Short + covers + post copy
 ```
 
 You approve each step that matters: the brief, the topics, the lyrics, and the creative direction. Satire and parody are fine, and it asks how the company's logo may be used and whether you'll monetize the video.
 
+Version 1.2.0 adds stand-alone Shorts: new mini-songs of 15 to 35 s for the Shorts feed, written in the voice of a video you've already finished. They're separate from cut shorts, the clips cut from the video, which stay as they were.
+
+- **A pitch menu.** The lyricist pitches six to eight mini-songs, each one joke from the research with a title phrased as the question viewers argue about, sung from the first word and ending on a punchline that loops back into the first line. You pick which go to Suno, and it tells you exactly what to paste.
+- **One project per Short,** copied from the finished video so the brand, fonts and research come along, with its own alignment, direction, critic rounds and 1080x1920 master.
+- **Built to loop.** Frame 0 is the hook, with no fade from black, and the last frame matches it, so the Short loops cleanly. Film grain is off by default, since it turns to mush in Shorts compression.
+- **Vertical covers:** three per Short, checked against the Reels and TikTok safe area by measuring pixels and read at full size. A cut short can get covers the same way.
+- **Post copy on request:** three titles, a description that links the full song, and hashtags, saved to a file in the Short's project.
+
 Version 1.1.0 adds optional versions for social posts, which the interview asks about up front as separate questions:
 
 - **A full-length vertical version** (9:16, 1080x1920) for Instagram Reels and TikTok. It's re-laid out for a phone held upright rather than cropped: you approve an adaptation of the direction, the lyrics stay clear of the apps' own buttons and captions, and a full-length cut stays under the 3:00 Reels limit.
-- **Shorts:** stand-alone clips of 15 to 60 s. It proposes segments that open cleanly and land on a strong line, you pick which to make, and each clip is cut frame-exactly from the vertical master. It shows you one early, and can write a title, caption and hashtags for each if you want them.
+- **Cut shorts:** clips of 15 to 60 s cut from the song. It proposes segments that open cleanly and land on a strong line, you pick which to make, and each clip is cut frame-exactly from the vertical master. It shows you one early, and can write a title, caption and hashtags for each if you want them.
 - **Cover posters:** YouTube thumbnails as new compositions in the video's style, with review sheets at phone and sidebar sizes.
 - **A tail after the song,** so a closing move can finish after the audio ends.
 
@@ -243,6 +252,8 @@ Invoke the `music-video` skill:
 
 It interviews you about the company first, including how its name is pronounced.
 
+To make a Short from a video you've already finished, invoke the same skill and say so ("make a Short from the Jira video"). It skips the interview, finds the finished project, and asks whether you want a cut short or a stand-alone Short.
+
 ### What it gives you for Suno
 
 Suno gets two things from the plugin: the lyrics and a style description. You generate the song in Suno yourself, then hand the audio file back.
@@ -255,7 +266,7 @@ Suno gets two things from the plugin: the lyrics and a style description. You ge
 - curl and tar
 - A Suno account
 
-Setup downloads headless Chromium (about 195 MB) into the project, and the first alignment run downloads about 650 MB of models that unpack to about 1.4 GB. A 4K master is about 3 GB, and needs about three times that free while it renders.
+Setup downloads headless Chromium (about 195 MB) into the project, and the first alignment run downloads about 650 MB of models that unpack to about 1.4 GB. A 4K master is about 3 GB, and needs about three times that free while it renders. Each stand-alone Short is a project of its own, with its own copy of the environments: about 2 GB each.
 
 ## Repository layout
 

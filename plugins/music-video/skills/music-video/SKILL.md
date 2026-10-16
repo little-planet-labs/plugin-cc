@@ -1,21 +1,21 @@
 ---
 name: music-video
-description: The playbook for making a beat-synced kinetic-typography music video about any company, satire and parody included, with a song generated in Suno and a 4K video drawn as a time-seeked HTML page, captured with Playwright and encoded with ffmpeg. Runs eight phases with user checkpoints (brief interview, company research, topic menu, lyrics and Suno pack, the user's song, the audio pipeline, creative direction with a per-line beat map, and the scene build) plus an optional concept round, then a critique loop in which a separate read-only critic scores each half-res draft on a fixed rubric until every score reaches 8, before the master render. Then the optional versions the interview asked about: a full-length vertical 9:16 version for Instagram Reels and TikTok (an approved adaptation addendum, its own scene registry, an early look, critic rounds and a 1080x1920 master), stand-alone shorts cut frame-exactly from it (segments the user picks, each clip's first and last frame checked), and cover posters. Names the agent and hand-off for each, and covers instantiating the project, logo use, monetization and hard rules, audio intake, feedback rounds, the quality level, render times and machine load, the deliverables, captions for the shorts on request, and cleanup. Use when the user wants a music video, song, or lyric video about a company or product.
+description: The playbook for making a beat-synced kinetic-typography music video about any company, satire and parody included, with a song generated in Suno and a 4K video drawn as a time-seeked HTML page, captured with Playwright and encoded with ffmpeg. Runs eight phases with user checkpoints (brief interview, company research, topic menu, lyrics and Suno pack, the user's song, the audio pipeline, creative direction with a per-line beat map, and the scene build) plus an optional concept round, then a critique loop in which a separate read-only critic scores each half-res draft on a fixed rubric until every score reaches 8, before the master render. Then, as the interview asked, a full-length vertical 9:16 version for Instagram Reels and TikTok (an approved adaptation addendum, its own scene registry, an early look, critic rounds and a 1080x1920 master), cut shorts (segments of the song cut frame-exactly from it, picked by the user, each clip's first and last frame checked), and cover posters. Also stand-alone Shorts, new 15 to 35 s mini-songs for the Shorts feed in the voice of a finished video, each with a pitch menu, its own project copied from the parent, a direction where frame 0 is the hook and the last frame loops into it, critic rounds, a 1080x1920 master, three vertical covers and post copy. Names the agent and hand-off for each, and covers instantiating the project, logo use, monetization and hard rules, audio intake, feedback rounds, the quality level, render times and machine load, the deliverables, captions for the shorts on request, and cleanup. Use when the user wants a music video, song, or lyric video about a company or product, or a Short or mini-song made from one of those videos ("make a Short from the Jira video").
 user-invocable: true
 ---
 
 # Music video
 
-You are the lead. Run the phases in order, stop at every ★ for the user, and dispatch the plugin's four agents for the phases they own: `music-video:company-researcher`, `music-video:lyricist`, `music-video:video-director`, and `music-video:video-critic`. Everything without an agent is yours. Don't skip ahead: no lyrics before the topics are approved, no full build before the direction or a concept is approved, and no vertical scenes before `creative/direction-vertical.md` is approved.
+You are the lead. Run the phases in order (or, for a short from a finished video, start as "Starting from a finished video" says), stop at every ★ for the user, and dispatch the plugin's four agents for the phases they own: `music-video:company-researcher`, `music-video:lyricist`, `music-video:video-director`, and `music-video:video-critic`. Everything without an agent is yours. Don't skip ahead: no lyrics before the topics are approved, no full build before the direction or a concept is approved, no vertical scenes before `creative/direction-vertical.md` is approved, and no Short's scenes before its `creative/direction-short.md` is approved.
 
 ## Ground rules
 
 - **Questions go through `AskUserQuestion`**, never buried in prose. Load `little-planet-factory:asking-questions` if it's installed. Batch up to four related questions per call, recommended option first.
-- **On-screen copy is lyrics, exact feature names, and the logo** (only as `brief.logoUse` allows). No invented taglines, labels, or captions that aren't sung. Post captions for the shorts are a different thing: copy the user asked for, written for the post and never put on screen (see "Captions for the shorts").
+- **On-screen copy is lyrics, exact feature names, and the logo** (only as `brief.logoUse` allows). No invented taglines, labels, or captions that aren't sung. On a stand-alone Short, `brief.docQuotes` says exactly which names may appear. Post captions are a different thing: copy the user asked for, written for the post and never put on screen (see "Captions for the shorts" and S6).
 - **The audio is read-only.** Nothing writes to `public/audio/track.*` after intake, and every render muxes it untouched: no resampling, no loudness normalisation.
 - **No git writes** unless the user asks. Follow `little-planet-factory:version-control` if it's installed; the default is to leave everything uncommitted.
 - **Sandbox.** Headless Chromium can't launch inside the Claude Code Bash sandbox (mach-port denial), so `pnpm still`, `draft`, `render`, `still-test`, `jitter --all-lines`, `posters` and `test:render` need the sandbox disabled for that command: pass `dangerouslyDisableSandbox: true`, or ask the user to turn the sandbox off with `/sandbox`. `analyze`, `align`, `beatmap`, `check`, `critique`, `pops`, single-window `jitter`, `preview`, `contact-sheet`, `clips` and `pnpm test` run inside it. Inside the sandbox, or behind a TLS-intercepting proxy, the setup commands need `PIP_USE_DEPRECATED=legacy-certs` in front.
-- **Machine load.** One heavy render on the machine at a time: a master (landscape or vertical), a draft, a text-only render, a concept clip, an early look, `still-test`, `pnpm clips`, `pnpm posters` or an alignment run, never two at once, across agents too. Never dispatch two directors that render at the same time. The render pool's cap is `render.pool` in `src/pipeline.json` (see "Renders and machine load").
+- **Machine load.** One heavy render on the machine at a time: a master (landscape or vertical), a draft, a text-only render, a concept clip, an early look, `still-test`, `pnpm clips`, `pnpm posters` or an alignment run, never two at once, across agents and across sibling Short projects too. Never dispatch two directors that render at the same time. On a stand-alone Short, the director always asks you for a go before a heavy command (S4). The render pool's cap is `render.pool` in `src/pipeline.json` (see "Renders and machine load").
 - **Quality level.** Pipeline code gets an inspector: if anyone changes the template's engine or scripts (`index.html`, `src/engine/`, `src/lib/`, `scripts/`, `tests/`, `package.json`), that diff goes to an inspector (`little-planet-factory:quality-bar`, foundational tier), and `pnpm test` and `pnpm test:render` (unsandboxed) must pass in the project. The video gets a judge: the builder can't review its own work, so every draft goes to `music-video:video-critic`, a separate read-only agent that scores it on a fixed rubric with a default stance of reject, and the build loops until it accepts (phase 8, and phase 10 for the vertical). In a howseen-ai/claude-motion-design run, the critic's first round caught text collisions, a dead 14 s intro and 30 s outro, lyrics cropped by the top edge, a strobe, and a hard-edged card, all missed by the builder's own still checks. Lyrics and direction are still the user's to approve at their checkpoints.
 - **General rules and per-video style.** These hold for every video:
   - **One unifying visual system**, varied inside it. The direction defines one world, material, type system, palette logic and motion language that hold the whole video together; variety comes from staging and transformations inside it, as much and as often (per line or per section) as the direction sets, never from a new unrelated world per line. No rule says each scene must look different from the others.
@@ -23,6 +23,7 @@ You are the lead. Run the phases in order, stop at every ★ for the user, and d
   - **No beat-locked rhythmic pulsing** by default on a slow song without heavy beats, unless the brief asks for it.
   - **The universal defect checks** the critic runs: shimmering held text, clipped descenders, collisions and crops, hard-edged seams, pops and flashes, phone readability, lyric accuracy, and sync.
   - **The pacing rules:** motion by 0.5 s, and a visible change at least every 4 s.
+  - **Shorts defaults.** On a stand-alone Short, frame 0 is the hook, the last frame loops into it, and film grain is 0 by default: grain turns to mush in Shorts compression, and it changes every frame, so the last frame can't match frame 0. Record it in the Short's `hardRules` as "No film grain on Shorts: grain 0 everywhere (Shorts default)". In the Jira run the user asked for it ("Yeah keep it off"); when the user states their own rule, record it verbatim as usual.
 
   Which system, and everything else about the look (palette, type, mascot treatment), is decided per video in the direction, from the brief and the user's words.
 
@@ -46,10 +47,14 @@ You are the lead. Run the phases in order, stop at every ★ for the user, and d
 | 10 | Vertical build, early look and draft rounds | `music-video:video-director` | `src/scenes-vertical/**`, the early look `out/<vertical outputName>-frames-<a>-<b>.mp4` and its preview, `out/vertical-draft-v<n>.mp4`, `out/critique/v<n>/` | |
 | 10 | Vertical critique, each round | `music-video:video-critic` (read-only) | nothing; you save `creative/critique/v<n>.md` and log the round | |
 | 10 | Vertical master, after ACCEPT | `music-video:video-director` | `out/<vertical outputName>.mp4`, its preview and contact sheet | |
-| 11 | Shorts: cut and check (when `social.shorts`) | `music-video:video-director`, then you | `out/clips/`; you check every clip's edges and lengths | |
+| 11 | Cut shorts: cut and check (when `social.shorts`) | `music-video:video-director`, then you | `out/clips/`; you check every clip's edges and lengths | |
 | 12 | Cover posters (when `posters`) | `music-video:video-director` | `src/posters.js`, `src/posters/`, `posters/` | ★ |
 
 Phases 7c and 9 to 12 run only for the versions the user asked for in the interview. Phase 12 doesn't depend on 7c or 9 to 11: run it at any point after the landscape master when no render is running.
+
+Two kinds of short, named apart everywhere: **cut shorts** are segments of the song cut from the vertical master (phases 7c and 11), and **stand-alone Shorts** are new mini-songs, each with its own project, made after the video is finished (steps S1 to S7 in "Stand-alone Shorts", after phase 12).
+
+**Starting from a finished video.** When the user asks for a Short or mini-song from a video that's already made ("make a Short from the Jira video"), don't restart at phase 1: the interview and the landscape build are done. Find the finished parent project; if its path isn't obvious, ask for it with `AskUserQuestion`. Check the prerequisites at the top of "Stand-alone Shorts". Then ask one `AskUserQuestion`: a **cut short** (a segment of the song itself: set `social.shorts` in the parent's brief and run 7c, so the picks go into `social.clips`. If the parent has no vertical master, run phases 9 and 10, where phase 9 writes the first `src/clips.vertical.json` from `social.clips`; if its vertical scenes exist, re-render the vertical master. Then phase 11) or a **stand-alone Short** (a new 15 to 35 s mini-song in the video's voice, with its own project, starting at S1).
 
 Every agent brief gives the absolute project path and the files the agent may write. Agents write only their own files.
 
@@ -62,7 +67,7 @@ Settle what the request doesn't already say. Four `AskUserQuestion` rounds usual
 - **Round 3:** whether the video will be **monetized**, how the **logo** may be used (below), and whether they have a **reference** for the look: a video or frames they like, a named style, or none.
 - **Round 4, the other versions.** The landscape 16:9 video is always made. Ask about the rest as separate questions, one decision each:
   - **Vertical:** do they want a **full-length vertical 9:16 version** for Instagram Reels and TikTok? Say it's a native re-layout for a phone held upright, not a crop, with its own approval step, and that a full-length Reel must stay under 3:00 (song plus tail; see phase 9).
-  - **Shorts:** do they want **short stand-alone clips** of 15 to 60 s for Reels and TikTok? Say they're cut from a vertical master, so asking for shorts means the vertical scenes get built and rendered even if they don't want the full-length vertical delivered, and that they'll pick the segments after the direction.
+  - **Shorts:** do they want **cut shorts**, clips of 15 to 60 s cut from the song for Reels and TikTok? Say they're cut from a vertical master, so asking for shorts means the vertical scenes get built and rendered even if they don't want the full-length vertical delivered, and that they'll pick the segments after the direction.
   - **Posters:** do they want **cover posters**: YouTube thumbnails as new compositions in the video's style, about six to choose from?
 
   Never fold the vertical and shorts questions into one ("vertical and shorts?"): a user can want either without the other.
@@ -249,7 +254,7 @@ When the user dislikes one element (a mascot, a graphic, a transition), don't re
 
 Only when `social.shorts` is true. Do it once the direction (or the concept pick) is approved, so the segments follow the sections the direction plans. It's your work, not a render, so it can run while the director builds phase 8.
 
-Read `src/data/sections.json`, `src/data/lyrics.json` and the direction's section plan, and propose 3 to 5 stand-alone segments. Each one:
+Read `src/data/sections.json`, `src/data/lyrics.json` and the direction's section plan, and propose 3 to 5 segments that each stand alone. Each one:
 
 - starts and ends on section boundaries: one section, or two that belong together, such as a verse and the chorus it leads into
 - opens clean, so someone who scrolls onto it sees a deliberate first frame, not the end of the previous line
@@ -405,12 +410,14 @@ pnpm contact-sheet --pipeline=src/pipeline.vertical.json. Report the output path
 
 The vertical master is `out/<vertical outputName>.mp4` (`out/music-video-vertical.mp4` in the template's config); the two configs' masters can't overwrite each other. In the Jira run, a 3-minute vertical master at scale 1 took about 22 minutes at pool 2. Read its contact sheet as for the landscape master. When the user wanted shorts but not the full-length vertical, the master is still rendered, since the clips are cut from it, but it isn't a deliverable.
 
-## 11. Shorts: cut and check
+## 11. Cut shorts: cut and check
 
-Only when `social.shorts` is true, after the vertical master.
+Only when `social.shorts` is true, after the vertical master. A cut short can also get vertical covers, the same way as a stand-alone Short (S5), with the `src/posters-shorts.js` registry in this project.
 
 ```
-Project: <abs path>. Cut the shorts. Check src/clips.vertical.json's edges against
+Project: <abs path>. Cut the shorts. [No clip list covers these picks yet (phase 9 didn't run
+for them): first create or extend src/clips.vertical.json from brief.json's social.clips, with edges set by
+phase 9's rules and the boundary words I flag from 7c.] Check src/clips.vertical.json's edges against
 stills of the master's edge frames and tune them to your staging, then
 pnpm clips --pipeline=src/pipeline.vertical.json, then for each clip
 pnpm preview --pipeline=src/pipeline.vertical.json --in out/clips/<file>.mp4.
@@ -453,6 +460,140 @@ Report the poster paths and both review sheets.
 
 `pnpm posters` captures each poster at 1920x1080, downscales it to 1280x720 into `posters/`, and builds `posters/posters-sheet.png` (all of them) and `posters/posters-small.png` (each at 360 and 168 px, YouTube's phone and sidebar sizes). Read both sheets so they show inline, and ask: approve, revise (name the posters and what to change), or redo. At the small sizes the title must still read; send back any poster that doesn't.
 
+## Stand-alone Shorts
+
+A stand-alone Short is a new mini-song of 15 to 35 s, written for the Shorts feed in the voice of a finished music video, the parent. Each gets its own project, direction, build, critic rounds, master, vertical covers and post copy. The parent must be finished first (research.md, brief.json, approved lyrics, the produced take, the direction, ideally its vertical version); the user can ask any time after that, in a later session. In the Jira run, "Five or eight" (28.4 s) and "Highest, Through and Through" (31.64 s) were made.
+
+| # | Step | Who | Writes | Stop |
+|---|---|---|---|---|
+| S1 | Pitch menu | `music-video:lyricist`, in the parent | `creative/shorts-pitches.md` | ★ |
+| S2 | Intake, one project per Short | you | the project, `creative/brief.json`, the lyrics, `src/data/*.json` | |
+| S3 | Direction | `music-video:video-director` | `creative/direction-short.md` (and optionally `creative/beatmap-<outputName>.md`); you edit `src/pipeline.vertical.json` | ★ |
+| S4 | Build, critic rounds, master | `music-video:video-director`, `music-video:video-critic` | `src/scenes-vertical/**`, drafts, `out/<outputName>.mp4`; you save `creative/critique/v<n>.md` | |
+| S5 | Covers | `music-video:video-director` | `src/posters-shorts.js`, `src/posters-shorts/`, `posters-shorts/` | ★ |
+| S6 | Post copy and delivery | you | `creative/social-captions.md` | |
+| S7 | Cleanup | you | nothing | |
+
+### S1. ★ Pitch menu: lyricist
+
+```
+Project: <parent abs path>. Stand-alone Shorts pitch menu. Load music-video:suno-songwriting.
+Read creative/brief.json, research.md, lyrics.screen.txt, suno-prompt.md and
+src/data/lyrics.json (seconds per sung line). Write ONLY creative/shorts-pitches.md: six to
+eight pitches, each with a title phrased as the question viewers argue about, one joke
+from research.md (Confirmed by / Inferring), the hook line, "about N s as written" (15 to
+30 s), the loop, screen and Suno text, "Is it new?" against the parent song, and the rules
+held. One shared Suno style line adapted from the parent's. End with the checks table and
+your top 2.
+```
+
+Check the checks table against the file: a row per pitch, no avoid hits, every estimate inside 15 to 30 s, and a style line under about 200 characters. Send back a pitch that repeats the parent's lines. Show the menu and ask one multi-select `AskUserQuestion`: which go to Suno, the top 2 first. Tell the user exactly what to paste for each: the pitch's text block whole, plus the style line. In the Jira run, 30 s asks came back at 28 to 32 s.
+
+### S2. Intake: one project per Short
+
+Each take gets its own project at `<parent project's parent dir>/shorts/<company-slug>-<short-slug>/` (ours: `shorts/jira-five-or-eight`, `shorts/jira-highest`). Stop if the folder exists and isn't empty. Copy the parent (brand, fonts, logo, research and scene helpers come along) without `out/`, `.venv`, `.venv-align` or `.cache`, since virtualenvs hold absolute paths; `music-video:video-pipeline` has the details:
+
+```sh
+mkdir -p <parent dir>/shorts
+rsync -a --exclude=/out/ --exclude=/.venv/ --exclude=/.venv-align/ --exclude=/.cache/ <parent>/ <parent dir>/shorts/<company-slug>-<short-slug>/
+pnpm setup:env && pnpm setup:align   # in the new project; about 2 GB
+```
+
+Copy the parent's `creative/brief.json`, `lyrics.screen.txt` and `lyrics.suno.txt` into `creative/reference/parent/`, and move its `creative/beatmap.md` and `src/clips.vertical.json` there (a Short has no clip list, and its beat map is `creative/beatmap-<outputName>.md`). Clear the copied `creative/critique/` (the parent keeps its reports). Put the take at `public/audio/track.wav` (read-only from then on, the only `track.*`), replace `creative/lyrics.screen.txt` and `lyrics.suno.txt` with the pitch text, and update `creative/brief.json`, keeping the parent's other fields:
+
+```json
+{
+  "concept": "Stand-alone Short: pitch 2, 'Why is every ticket Highest?', in the voice of the parent '<title>'.",
+  "targetSeconds": 30,
+  "social": {"vertical": true, "shorts": false, "clips": []},
+  "posters": false,
+  "parent": "/abs/path/to/the/parent",
+  "targetNote": "The take is 31.64 s. Vertical only; the landscape registry still holds the parent's scenes and is unused.",
+  "docQuotes": "the sung lyrics and the exact priority names Highest, High, Medium, Low, Lowest; nothing else",
+  "hardRules": ["<the parent's rules>", "No film grain on Shorts: grain 0 everywhere (Shorts default)", "<any rules the user states, verbatim>"]
+}
+```
+
+`docQuotes` is "none: sung lyrics only" when no product name may appear. Then run `pnpm analyze`, `pnpm align` and `pnpm check` (a data-only check at this point; once S3 edits the vertical config, every command takes `--pipeline=src/pipeline.vertical.json`), and review as in phase 6. Edit the lyrics to what was actually sung and re-align: in "Five or eight", "And" was sung "Then the architect". Pass each edit to the director, who records it under "Lyric edits from the alignment" in `direction-short.md`, and tell the user when one changes the words on screen. Tell the user the take's length; a stand-alone Short should land around 20 to 35 s.
+
+### S3. ★ Direction: video-director
+
+First edit `src/pipeline.vertical.json`: `outputName` `<company-slug>-<short-slug>-vertical`, `scenes` `src/scenes-vertical/index.js`, and `tailSeconds` 0 when the take ends on its own final chord or decay rather than cut mid-note (listen to the last second), so the loop has no silent frames. Both Jira Shorts used 0. The landscape registry is unused.
+
+```
+Project: <abs path>. Stand-alone Short, vertical only (1080x1920), in the voice of the parent
+at <parent abs path> (read-only). Load music-video:scene-authoring and music-video:video-pipeline.
+Read creative/brief.json (concept, docQuotes, hardRules, logoUse, targetNote), the pitch in
+the parent's creative/shorts-pitches.md, creative/reference/parent/, creative/direction.md
+and direction-vertical.md (the parent's look), src/pipeline.vertical.json (tailSeconds <n>)
+and src/data/*.json. Lyric edits from the alignment: <list, with the user's answers>.
+Write ONLY creative/direction-short.md (a per-line beat map may go inside it, or start
+creative/beatmap-<outputName>.md with pnpm beatmap --pipeline=src/pipeline.vertical.json):
+frame 0 a finished, readable hook with motion from frame 1 and a first event by about
+0.4 s, the last frame matching frame 0, words only from the lyrics and docQuotes, grain 0.
+No scene code yet.
+```
+
+Show the user the summary, frame 0 and how the loop closes, and ask: approve, run a concept round (as in 7b, with `--pipeline=src/pipeline.vertical.json`), or redirect. For "Highest", the round had three concepts in four registries (The Full House was built with two endings, crash and sell-out), and the user picked The Full House with the floor-collapse ending.
+
+### S4. Build, critic rounds, and master
+
+The loop is phase 10's, judged against `direction-short.md`: `out/vertical-draft-v<n>.mp4`, `out/critique/v<n>/`, `creative/critique/v<n>.md`, a row in `creative/critique/versions.md`, snapshots in `out/snapshots/v<n>/`. Brief the build and the critic as in phase 10, with `direction-short.md` in place of the addendum and no clip edges; tell the critic "Stand-alone Short: judge frame 0 as the hook and the loop seam, last frame into frame 0. Locked sections: <list>."
+
+- **Locked sections.** The critic locks sections that score 9 or more. A later round that touches one must bring strips for every frame of it: the "Highest" v4 was rejected because the camera path changed inside the locked reset and f917 to f938 had no strips. In v5, strips at 30.60 and 31.00 (f915 to f938) settled it.
+- **Polish rounds** after ACCEPT are the user's choice. Ask; don't start one yourself.
+- **The render slot.** On a stand-alone Short, the director always stops and asks you for a go before a heavy command, whether or not another Short is in flight. Give the slot to one at a time across all projects. Heavy: `draft`, any render (text-only, partial, a motion test or concept clip, the master), `still-test`, `jitter --all-lines`, and a batch of stills. No go needed: a single still or two, `check`, `beatmap`, `critique`, `pops`, `preview`, `contact-sheet`, and single-window `jitter`.
+
+After the master (`out/<outputName>.mp4`, its preview and contact sheet), check it yourself:
+
+```sh
+mkdir -p out/wip-loop
+ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=width,height,r_frame_rate,nb_read_frames -of default=nw=1 out/<outputName>.mp4
+ffprobe -v error -show_entries stream=codec_type,duration -of default=nw=1 out/<outputName>.mp4
+ffprobe -v error -show_entries format=duration -of default=nw=1 public/audio/track.wav
+ffmpeg -v error -y -i out/<outputName>.mp4 -vf "select=eq(n\,0)" -frames:v 1 out/wip-loop/f0.png
+ffmpeg -v error -y -i out/<outputName>.mp4 -vf "select=eq(n\,<frames - 1>)" -frames:v 1 out/wip-loop/last.png
+ffmpeg -hide_banner -i out/wip-loop/f0.png -i out/wip-loop/last.png -lavfi psnr -f null - 2>&1 | grep Parsed_psnr
+```
+
+Expect 1080x1920, `30/1`, `nb_read_frames` equal to ceil(duration × 30), and an audio duration equal to the take's. Read both frames with the Read tool: they should match. The "Highest" master (950 frames) measured 45.8 dB.
+
+### S5. ★ Covers: video-director
+
+```
+Project: <abs path>. Three 1080x1920 covers for the Short. Load music-video:scene-authoring
+and music-video:video-pipeline. Read creative/direction-short.md, brief.json (docQuotes,
+logoUse, hardRules) and src/data/lyrics.json. Write src/posters-shorts.js (SCENES = {},
+DEFAULT_SCENE, COVERS = [{n, slug, frame}]) and src/posters-shorts/covers.js; leave the
+video's scenes untouched. Render cover k with pnpm still --pipeline=src/pipeline.vertical.json
+--scenes=src/posters-shorts.js --frame=<30k> to posters-shorts/<short-slug>-<k>-<name>.png,
+plus <short-slug>-sheet.png and <short-slug>-small.png (video-pipeline's covers recipe).
+Three distinct ideas. Report each
+cover's bounds measured from pixels.
+```
+
+Check the covers yourself before the user sees them:
+
+- **Measure the bounds from pixels**, never from a code comment: every key shape and word inside x 108-920, y 220-1500, and the main read inside y 420-1500. Overlay both boxes, read the result, and measure any shape near an edge. At signoff, "Highest" shapes measured x 91 to 943 and ran below y 1500 while the comment said they were inside.
+
+  ```sh
+  mkdir -p out/wip-covers
+  ffmpeg -v error -y -i posters-shorts/<file>.png -vf "drawbox=x=108:y=220:w=812:h=1280:color=red@0.9:t=4,drawbox=x=108:y=420:w=812:h=1080:color=yellow@0.9:t=4" out/wip-covers/<file>-safe.png
+  ```
+
+- **Read every cover at full size**, not only the sheet. A crack graphic split the "h" of "Highest" and left a white sliver that only showed at full size.
+- Words at 4.5:1 contrast or better, and only sung lyrics, `docQuotes` names and sung numerals; no logo unless `logoUse` allows; grain 0. A cover that echoes one the user already posted is a backup only.
+
+Read the two sheets inline, recommend one, and ask: approve, revise, or redo. A cut short's covers work the same way, with the registry in the parent project.
+
+### S6. Post copy and delivery
+
+On request, write titles and descriptions to `creative/social-captions.md` in the Short's project, and show them in your message. In the Jira run they went only into chat, and the user had to ask again. For each Short: three titles, the recommended first (usually the pitch's question); a description whose first line quotes a sung line exactly, then "A <N>-second <genre> song about <topic>, from the people who brought you "<parent title>". Full song: <link>", with N the take's length rounded to the nearest second (the Jira takes were 28.4 s and 31.6 s); hashtags ending with #shorts; and "Parody - not affiliated with <company>." for a parody. Tell the user to replace `<link>`, set the full video as the Related video, match the parent title as posted, and space out Shorts on one topic. Then deliver ("Deliverables").
+
+### S7. Cleanup
+
+Each Short project holds about 2 GB of environments plus its `out/`. Run "Cleanup" in each one; the user may keep the environments while more Shorts are likely.
+
 ## Renders and machine load
 
 `src/pipeline.json` holds the settings every render shares: `render` (scale 2, so a 3840x2160 master from the 1920x1080 page; CRF 17; PNG captures; `pool` 2; 20 s chunks) and `draft` (scale 0.5, 960x540, JPEG captures, CRF 23). Measured at pool 2 with the template's placeholder scene; real scenes are slower, and every frame inside a blur window costs one capture per sample:
@@ -491,6 +632,11 @@ Then the versions the brief asked for:
 - **The shorts** (when `social.shorts`): each clip's full-quality path under `out/clips/`, with its title, length and first sung line. The full-quality clips are usually over the 30 MB chat upload cap, so send the preview copies (`out/clips/<file>-preview.mp4`, 720x1280) for chat and give the paths of the full-quality files for posting. Tell the user that `theme.safe.social` is an estimate of the Reels and TikTok overlays, and to check one real upload before posting the rest.
 - **The posters** (when `posters`): the paths of the 1280x720 PNGs in `posters/`, with `posters/posters-sheet.png` read inline. A successful `pnpm posters` removes poster PNGs that are no longer in the list, so the `poster-*.png` files there are exactly the current set.
 
+For a **stand-alone Short**, send from its own project:
+
+- **Post-ready:** the master `out/<outputName>.mp4` (1080x1920), the recommended cover and the alternates in `posters-shorts/` (absolute paths, recommended first), and `creative/social-captions.md` when the user asked for post copy.
+- **Previews, as a separate list:** `out/<outputName>-preview.mp4` and the contact sheet, read inline. Never mix previews into the post-ready list.
+
 ### Captions for the shorts
 
 At delivery, ask whether the user wants titles and captions for the shorts. Write them only if they do, to `creative/social-captions.md`, and show them in your message. For each short:
@@ -500,7 +646,7 @@ At delivery, ask whether the user wants titles and captions for the shorts. Writ
 - **Hashtags**: a few that fit the company, the song's genre and the joke.
 - **For a satire,** a suggested line such as "Parody - not affiliated with <company>".
 
-The user asked for this copy, so the no-invented-copy rule for on-screen text doesn't apply to it. It still never goes on screen, and it keeps to `brief.avoid`.
+The user asked for this copy, so the no-invented-copy rule for on-screen text doesn't apply to it. It still never goes on screen, and it keeps to `brief.avoid`. Post copy for a stand-alone Short (three titles, a description and hashtags) follows S6 and goes to the same file name in the Short's project.
 
 When Cadence is connected you can also store the contact sheet with `prepare_file_upload` and give its file number. That path caps files at 4 MB, so the preview usually doesn't fit; leave it as a path.
 
@@ -525,5 +671,6 @@ List these with their sizes (`du -sh`) and ask with a multi-select `AskUserQuest
 | `.cache/models` | about 1.4 GB | alignment models; re-aligning without them downloads about 650 MB again |
 | `.cache/ms-playwright` | about 195 MB | headless Chromium; `pnpm setup:env` downloads it again |
 | `.venv` | check | `pnpm setup:env` recreates it; every capture, critique and analysis needs it |
+| A stand-alone Short's `.venv`, `.venv-align` and `.cache` | about 2 GB per Short project (525 MB, 493 MB and 1.0 GB for "Highest") | `pnpm setup:env` and `pnpm setup:align` recreate them; keep them while more Shorts or fixes are likely |
 
-Never delete `public/audio/`, `public/brand/`, `public/fonts/`, `creative/`, `src/`, `posters/`, the masters (landscape and vertical, including a vertical master rendered only for the shorts, since re-cutting a clip needs it), their previews and contact sheets, or the full-quality clips and their manifest in `out/clips/`. Keep the alignment models unless the user says alignment is done for good, and keep `.venv` and `.cache/ms-playwright` while any render or fix is still likely. Delete only what the user ticked, and report what was deleted with its size.
+Run this in the parent and in each Short project under `shorts/`. Never delete `public/audio/`, `public/brand/`, `public/fonts/`, `creative/`, `src/`, `posters/`, `posters-shorts/`, the masters (landscape and vertical, including a vertical master rendered only for the shorts, since re-cutting a clip needs it), their previews and contact sheets, or the full-quality clips and their manifest in `out/clips/`. Keep the alignment models unless the user says alignment is done for good, and keep `.venv` and `.cache/ms-playwright` while any render or fix is still likely. Delete only what the user ticked, and report what was deleted with its size.

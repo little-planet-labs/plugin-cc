@@ -1,12 +1,12 @@
 ---
 name: scene-authoring
-description: How the music-video director designs and builds a video's scenes on the HTML page engine. Covers creative/direction.md (a named reference, one unifying visual system varied inside it) and the per-line beat map before any code, the concept round as alternate scene registries, the timing contract, the layer stack, lyrics through ctx.lyric with designed exits, text-led transitions, cut seams and subframe motion blur, motion and spring rules, pacing (the 0.5 s hook and the 4 s change rule), beat pulsing only where the track pounds or the brief asks, readability and caption rules, safe areas, on-screen copy, determinism and capture hygiene, the one-shot build, and the draft rounds (stills, critique sheets, pops, still-test, jitter) that feed the critic loop, with machine-load limits and known pitfalls. Also covers the vertical 9:16 version as a parallel registry (the direction-vertical.md addendum, safe areas for the Reels and TikTok overlays, per-line row breaks, a setup-time safe-area guard, restaging, clip-friendly openings, seams, the outro inside a short tail, and the clip list) and the cover posters. Use when writing direction.md, beatmap.md, concepts.md, direction-vertical.md, src/clips.vertical.json, or anything under src/scenes/, src/concepts/, src/scenes-vertical/ or src/posters/.
+description: How the music-video director designs and builds a video's scenes on the HTML page engine. Covers creative/direction.md (a named reference, one unifying visual system varied inside it) and the per-line beat map before any code, the concept round as alternate scene registries, the timing contract, the layer stack, lyrics through ctx.lyric with designed exits, text-led transitions, cut seams and subframe motion blur, motion and spring rules, pacing (the 0.5 s hook and the 4 s change rule), beat pulsing only where the track pounds or the brief asks, readability and caption rules, safe areas, on-screen copy, determinism and capture hygiene, the one-shot build, and the draft rounds (stills, critique sheets, pops, still-test, jitter) that feed the critic loop, with machine-load limits and known pitfalls. Also covers the vertical 9:16 version as a parallel registry (the direction-vertical.md addendum, safe areas for the Reels and TikTok overlays, per-line row breaks, a setup-time safe-area guard, restaging, clip-friendly openings, seams, the outro inside a short tail, and the clip list) and the cover posters. Also covers stand-alone Shorts, new mini-songs in a finished video's voice (direction-short.md, frame 0 as the hook, the loop seam with a smoothstep camera, grain 0, strips over the seam for the critic) and their vertical covers from the src/posters-shorts.js registry. Use when writing direction.md, beatmap.md, concepts.md, direction-vertical.md, direction-short.md, src/clips.vertical.json, src/posters-shorts.js, or anything under src/scenes/, src/concepts/, src/scenes-vertical/, src/posters/ or src/posters-shorts/.
 user-invocable: false
 ---
 
 # Scene authoring
 
-The pipeline is shared; the look is not. Every video gets its own visual language, designed before any code and built in one pass. Load `music-video:video-pipeline` alongside this skill: it documents the page engine, the scene API (`ctx`), every script and flag, the data files, and the gotchas. This skill is how to use them well. `examples/kizen.md`, `examples/github.md` and `examples/jira.md` are finished examples; `examples/jira.md` also shows a vertical adaptation. **Don't copy their looks.**
+The pipeline is shared; the look is not. Every video gets its own visual language, designed before any code and built in one pass. Load `music-video:video-pipeline` alongside this skill: it documents the page engine, the scene API (`ctx`), every script and flag, the data files, and the gotchas. This skill is how to use them well. `examples/kizen.md`, `examples/github.md` and `examples/jira.md` are finished examples; `examples/jira.md` also shows a vertical adaptation and two stand-alone Shorts. **Don't copy their looks.**
 
 The engine and much of the method below are adapted from howseen-ai/claude-motion-design (MIT; see the template's `NOTICE.md`).
 
@@ -466,6 +466,151 @@ Cover posters are YouTube thumbnails: new compositions in the video's style, mad
 - Build them as the alternate registry `src/posters.js` with the modules in `src/posters/` (the video-pipeline skill's "Posters" has the shape), on the 1920x1080 landscape page. Replace the template's placeholder entry and scene: one `POSTERS` entry per poster and your poster scene as `DEFAULT_SCENE`. Import world helpers read-only.
 - On-screen text: the song title, sung lyrics and exact feature names only, and the logo only as `brief.logoUse` allows. Register every lyric line hidden.
 - Run `pnpm posters`, then open `posters/posters-sheet.png` and `posters/posters-small.png`. At 168 px the title must still read and the idea must still show; fix any poster where it doesn't before you report.
+- `pnpm posters` captures only the 16:9 page. Vertical covers, for a stand-alone Short or a cut short, come from the `src/posters-shorts.js` registry in section 8.
+
+## 8. Stand-alone Shorts
+
+A stand-alone Short is a new mini-song of 15 to 35 s, written for the Shorts feed in the voice of a finished parent video. It has its own project, direction, build, critic rounds, master and covers. It isn't a cut short (section 6's clips of the parent's vertical master). It's vertical only: the build is a `src/scenes-vertical/` registry on `src/pipeline.vertical.json`, and the landscape registry, still the parent's, is unused. Section 6's text box, row breaks, guard, camera framing and the 200 px prop rule all apply. Its clip edges, act curtains and outro inside the tail don't: the whole master is the post, and it loops.
+
+### direction-short.md first
+
+Write `creative/direction-short.md` before any code and stop for approval. It's the whole direction for the project, not an addendum:
+
+1. **Summary**, passing the one-sentence test.
+2. **Reference:** the parent's named reference, plus anything this Short adds (Highest added a Pollock's toy-theatre auditorium, cut in the parent's Saul Bass shapes).
+3. **Differs from the parent**, and from sibling Shorts. The Short keeps the parent's material, character, type family and palette, and changes the world or the angle, the camera and the motion vocabulary.
+4. **Visual language:** the unifying system, how it varies (usually per line, since a Short is often one section), and a hero and prop size table checked against the 200 px rule.
+5. **The frame:** the diagram, the text box, and what sits outside it.
+6. **Timing from the alignment:** the track's length and frames, tempo, the lead-in, the last word, the button, and the tail; a "Lyric edits from the alignment" table (each word changed to what was sung, with the evidence); and the downbeats against the sung stresses.
+7. **Frame 0, the hook, and the loop** (below).
+8. **The lyric layer and exits,** with the caption timing notes and the row-break table.
+9. **Pacing.**
+10. **The code:** the files, what's imported read-only from the parent, and what isn't and why.
+11. **Alternates**, one line each.
+
+After each critic round, add a "Round v<n> changes" section: each item, and what changed, with frames and measurements.
+
+Import nothing from the parent that is keyed by line ids. A Short's lines are `verse-1-1` onwards, the same ids as the parent's first verse, so the parent's vertical row-break table would hand them the old song's breaks with no error.
+
+### Frame 0 is the hook
+
+A Short is judged in the feed before anyone hears a word, and a fade-in costs the swipe.
+
+- **Frame 0 is a finished, readable composition that already says the joke.** No fade from black, no empty stage, no title card. Highest opens on a packed red gallery over four empty tiers, its plate lit red from f0 (added after the critic's round 1 found no Highest cue on frame 0). Five or eight opens on the 5 card held high over the table with the 8 face up.
+- **Motion from frame 1, and the first event within about 0.4 s.** Highest's gallery leans on the f5 orchestra hit, and the late ticket slams into its seat on the f11 hit. The camera moves from f0; the concept build's hold to f14 was cut.
+- **Motion that reads at phone size.** Five or eight's round-1 hook scored 5: the 5 drifted 1 to 2 px over 12 frames, and its lane accents were hairlines. By v3 it rose about 120 px and turned by f15, and each pizzicato onset lit a 30 px lane header.
+- **Words start on the first sung word.** The track is read-only, so the picture carries the lead-in before it (1.2 s in Five or eight, 1.9 s in Highest).
+
+### The loop seam
+
+The Shorts player loops, so the last frame runs straight into frame 0. Design the seam as one move.
+
+- **Reset to the opening pose.** After the button, a reset or a rewind returns everything to frame 0's pose and lands on the last frame, `ctx.frames - 1`. Draw that pose with one function called with the same arguments at f0 and at the last frame (Five or eight's `dealPose(u)`), so the two frames are identical, not close. Highest runs its crash backwards as one synchronised rewind.
+- **A cut on matched movement.** Whatever moves at frame 0 moves the same way on the last frames. Highest's late ticket flies on one function, `flight(u)`: its takeoff over the last 22 frames runs u 0 to 0.5 on a quadratic ease-in, so it reaches f0's point on the last frame at the speed f0 to f11 flies.
+- **The words clear, then the world moves.** The last line exits on the button (Highest fades line 8 over f902 to f911). The camera holds until the fade is at 0.26 or less, then makes one smoothstep move back to frame 0's pose: at most about 12 px and a zoom ratio of about 1.02 per frame, at rest before the last frame. Highest holds f905 to f908 and moves f908 to f936: 11.6 px and 1.0098 at most, at rest from f936. The same move on `cam` from f905 peaked at 18.9 px and 1.0200.
+- **Time it from `ctx`,** not from typed frames: the button is the last downbeat at or before `ctx.audioEnd`, and the reset ends on the last frame.
+- **No silent frames.** When the take ends on its decayed last chord, the lead sets `tailSeconds` 0, so the last frame is the song's last frame and `ctx.frames` equals `ctx.audioFrames` (852 frames for Five or eight, 950 for Highest). A tail would put dead air into every loop.
+- **Check it** on stills; `inf` means the frames are identical:
+
+  ```sh
+  pnpm still --pipeline=src/pipeline.vertical.json --frame=0 --out=out/wip-loop/f0.png
+  pnpm still --pipeline=src/pipeline.vertical.json --frame=<last frame> --out=out/wip-loop/last.png
+  ffmpeg -hide_banner -i out/wip-loop/f0.png -i out/wip-loop/last.png -lavfi psnr -f null - 2>&1 | grep Parsed_psnr
+  ```
+
+  Highest's f0 and f949 stills differed in no pixel, and its encoded master measured 45.8 dB, which is the encode. Five or eight compared the canvas op lists of f0 and f851 in a Node dry run.
+- **Show the whole seam on strips** every round it changes, from the last line's exit to the last frame (below).
+
+### Camera paths: a smoothstep helper
+
+`ctx.camera(keys, ease)` takes one ease for every segment: a name from `EASE` or a function. `cam` is steep in the middle. Highest's push from 0.58 to 1.55 over f645 to f656 put most of its 2.7× zoom into four frames on `cam`, and the critic called it a whip-zoom (1.33 per frame at its peak). A smoothstep peaks at 1.5 times the average speed and starts and lands softly; on it the same push peaked at 1.143 per frame, under the critic's 1.15.
+
+```js
+// kit.js
+export const smooth = (u) => u * u * (3 - 2 * u);
+```
+
+`ctx.camera` takes only `[t, zoom, x, y]` keys and one ease for the whole path: a key of any other length throws "camera: keys[i] must be [t, zoom, x, y] numbers" (`validateCameraKeys` in `src/lib/camera.js`). So `ctx.camera(keys, smooth)` works when every segment of the path should be a smoothstep. When one path mixes eases, write a camera helper in the Short's kit instead, and apply what it returns each frame yourself, without calling `ctx.camera`: with `ctx.applyCamera(container, k)` or `ctx.cameraOnCanvas(c2d, k)` when its `{zoom, x, y}` means what the engine's does, or with the kit's own canvas transform (Highest's `worldCam(c, k)` puts world point (x, y) under a fixed anchor). Highest's `camAt(keys, t)` in `house/kit.js` takes an optional fifth element per key, the ease of the segment arriving at it (a name or a function), and interpolates zoom in log space as the engine does:
+
+```js
+const [t1, z1, x1, y1, e = 'cam'] = keys[i];
+const [t0, z0, x0, y0] = keys[i - 1];
+const u = (typeof e === 'function' ? e : ease(e))((t - t0) / (t1 - t0));
+// zoom: exp(log z0 + (log z1 - log z0) * u); x and y: linear in u
+```
+
+Either way, zoom interpolates in log space. Check a move frame to frame, not over its whole length: the largest per-frame shift of a world anchor in px, and the largest frame-to-frame zoom ratio.
+
+### Grain, words and the logo
+
+- **Grain 0** on every frame (`ctx.setFx({grain: 0, ...})`). Grain turns to mush in Shorts compression, and its pattern changes every frame, so a seam can't match with it on. It's the default on every stand-alone Short, recorded in `brief.hardRules` as "No film grain on Shorts: grain 0 everywhere (Shorts default)" unless the user says otherwise. On the Jira Shorts the user confirmed it ("Yeah keep it off"). A vignette is fine.
+- **Words** are the sung lyrics through `ctx.lyric`, the exact product names `brief.docQuotes` allows, and sung numerals. A numeral on a prop shows from its sung frame too: Five or eight's poker cards carry only sung values (5, 8, 13, 2, 100, 17). Its 5 and 8 on frame 0, 1.2 and 1.8 s before they're sung, were the one exception, and the user asked for it.
+- **No logo** unless `brief.logoUse` allows it.
+
+### Strips for the critic
+
+Section 5's rounds apply, with the vertical names (`out/vertical-draft-v<n>.mp4`, tags `v<n>` and `v<n>-extra`). In the extra strips, put the hook (0.00 and 0.40, so f0 to f20 shows), every gag's frame, and the loop seam. A strip at s seconds covers frames round((s − 0.1) × 30) to that + 11, so for f<a> to f<b> put strips at (a + 12i) / 30 + 0.1 s.
+
+The critic locks a section that scores 9 or more, and a later round that changes anything in it must show every frame of it on strips. Highest's v4 fixed both of its polish items and was still rejected, with no visible defect, because the reset's changed camera path (f917 to f938) was on no strip. v5 moved the path to a smoothstep and added strips 30.60 and 31.00 (f915 to f938), and it was accepted.
+
+### Covers
+
+A Short gets three 1080x1920 covers, from a registry that leaves the video's scenes alone:
+
+```js
+// src/posters-shorts.js
+import covers from './posters-shorts/covers.js';
+
+export const SCENES = {};
+export const DEFAULT_SCENE = covers;
+
+/** The covers, for reference: number, slug, page frame. */
+export const COVERS = Object.freeze([
+  {n: 1, slug: 'full-house', frame: 30},
+  {n: 2, slug: 'floor-collapse', frame: 60},
+  {n: 3, slug: 'lost-urgent', frame: 90},
+]);
+```
+
+`SCENES = {}` makes every section play `DEFAULT_SCENE`. No script reads `COVERS`; it's the list you render from. The scene in `src/posters-shorts/covers.js` registers every lyric line hidden (`ctx.lyric(line.id, {css: 'opacity:0'})`) and draws cover k at song time t in [k, k + 1):
+
+```js
+draw(t, ctx) {
+  const k = Math.min(3, Math.max(1, Math.floor(t + 1e-6)));
+  covers[k](ctx.state.c.get(), ctx, ctx.state.P);
+  ctx.setFx({grain: 0, vignette: 0.16});
+},
+```
+
+Render each cover as a still, cover k at frame 30 k:
+
+```sh
+pnpm still --pipeline=src/pipeline.vertical.json --scenes=src/posters-shorts.js --frame=30 --out=posters-shorts/<short-slug>-1-<name>.png
+```
+
+Then build `posters-shorts/<short-slug>-sheet.png` (the three side by side) and `posters-shorts/<short-slug>-small.png` (the shelf-size check) with the recipe in the video-pipeline skill's "Stand-alone Short projects" ("Covers: the still-based registry").
+
+The rules:
+
+- **New compositions** in the Short's world, made to read at shelf-thumbnail size (Inferring (unverified): about 180 to 200 px wide; the Jira covers were composed for 180x320), never frames lifted from the video. Each cover is a distinct idea (Highest: the full house, the floor collapse, the urgent one in the follow spot). A cover that echoes one the user already posted, such as a cut short's cover of the same joke, is a backup only.
+- **Every key shape and word inside the text box,** x 108 to 920 and y 220 to 1500, and the main read inside y 420 to 1500, so the shelf's centre crop keeps it. Outside the box goes only world texture.
+- **Measure the bounds from pixels,** never from a code comment. Highest's comment said its shapes were inside; signoff measured x 91 to 943 and shapes below y 1500. Mask the key shapes off the field and print their box. Highest's mask was any channel over 80, above the stage lip at y 1520; pick a mask per cover that keeps the shapes and drops the texture:
+
+  ```sh
+  .venv/bin/python - posters-shorts/<file>.png 80 1520 <<'EOF'
+  import sys
+  import numpy as np
+  from PIL import Image
+  a = np.asarray(Image.open(sys.argv[1]).convert('RGB'))
+  m = (a.max(axis=2) > int(sys.argv[2]))[: int(sys.argv[3])]
+  ys, xs = np.nonzero(m)
+  print(f'x {xs.min()}-{xs.max()}, y {ys.min()}-{ys.max()}')
+  EOF
+  ```
+
+- **Words** are verbatim spans of sung lines, `docQuotes` names and sung numerals, at 4.5:1 or better against what's behind them. No logo unless `brief.logoUse` allows it. Grain 0.
+- **Read every cover at full size,** not only the sheet. Highest's floor-collapse cover cracked its plate through the "h" of "Highest" and left a white sliver that showed only at full size. The fix set the word as "High" and "est" with a 44 px gap over the crack, each half clipped 4 px short of the seam.
+- **A cut short** gets covers the same way, with the registry in the parent project (the Jira parent's `src/posters-shorts.js` for its Highest re-cut).
 
 ## Known pitfalls
 
@@ -498,3 +643,12 @@ From the Jira run's vertical version (`examples/jira.md`):
 - **A seven-wide line-up.** Seven chorus cards in one row needed 1654 px; they were restaged on risers.
 - **A prop shrunk to a speck.** A card scaled down for the narrow frame read as a speck at 143 px in the stills and was enlarged to about 198 px.
 - **A close that can't fit the tail.** The landscape close ran 1.4 s past the audio; with a 0.3 s tail it had to be retimed to finish on the audio end.
+
+From the Jira stand-alone Shorts (`examples/jira.md`):
+
+- **A hook that barely moves.** A 1 to 2 px drift over the first 12 frames scored 5 for the hook. Frame 0 has to say the joke, and something has to visibly move by about 0.4 s.
+- **A changed seam with no strips.** A polish round changed the camera inside the locked loop reset and left those frames off the strips. The critic rejected it on evidence alone. Strip every frame you touch in a locked section.
+- **A whip-zoom on `cam`.** A 2.7× push over 11 frames put most of its zoom into four frames. A smoothstep spread it to 1.143 per frame at most.
+- **The last line crowding the world.** The final line sat about 25 px above the packed gallery for its 1.4 s hold. The camera framed it lower for 40 px or more of clearance, and the reset still landed on frame 0's pose.
+- **A cover split through a letter.** A crack graphic cut the "h" of "Highest" and left a white sliver, seen only at full size. Set the word in pieces around the crack, and read every cover at full size.
+- **A cover's bounds taken from its comment.** The comment said every shape was inside the text box; the pixels ran from x 91 to 943 and below y 1500. Measure the PNG.

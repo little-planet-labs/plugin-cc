@@ -1,6 +1,6 @@
 ---
 name: video-pipeline
-description: The deterministic kit behind every music video. A company-agnostic template that draws the video as a time-seeked HTML page, captures it frame by frame with Playwright's headless Chromium and encodes it with ffmpeg. Covers setup:env, fonts, audio analysis, lyric alignment, beatmap, the page engine and scene API (layers, lyric entrances and exits, transitions, hard cuts, blur windows, camera, shake, shatter), the brand theme, still, draft, the chunked render with its hard pool cap, and the QA scripts (critique, pops, still-test, jitter, preview, contact sheet). Covers pipeline.json and alternate pipeline configs (--pipeline, the scenes key, the vertical 9:16 config, master naming and protection), tailSeconds, the theme's short-side type scale and social safe area, pnpm clips and its clip list, pnpm posters, the data files, the timing contract and the gotchas (sandboxed Chromium, pip certificates, model hosts, AAC priming, the device-pixel-ratio trap, ffmpeg 8 colour tags, the 30 MB preview). Use when setting up a music-video project, running analysis, alignment, stills, drafts, renders or QA, or writing scene code against the page engine.
+description: The deterministic kit behind every music video. A company-agnostic template that draws the video as a time-seeked HTML page, captures it frame by frame with Playwright's headless Chromium and encodes it with ffmpeg. Covers setup:env, fonts, audio analysis, lyric alignment, beatmap, the page engine and scene API (layers, lyric entrances and exits, transitions, hard cuts, blur windows, camera, shake, shatter), the brand theme, still, draft, the chunked render with its hard pool cap, and the QA scripts (critique, pops, still-test, jitter, preview, contact sheet). Covers pipeline.json and alternate pipeline configs (--pipeline, the scenes key, the vertical 9:16 config, master naming and protection), tailSeconds, the theme's short-side type scale and social safe area, pnpm clips and its clip list, pnpm posters, the stand-alone Short project (copying the parent without its environments, the vertical-only config with no tail, the frame count, the master and loop checks, and the still-based cover registry src/posters-shorts.js), the data files, the timing contract and the gotchas (sandboxed Chromium, pip certificates, model hosts, AAC priming, the device-pixel-ratio trap, ffmpeg 8 colour tags, the 30 MB preview). Use when setting up a music-video project, running analysis, alignment, stills, drafts, renders or QA, or writing scene code against the page engine.
 user-invocable: false
 ---
 
@@ -49,7 +49,7 @@ pnpm fonts          # after brand.json is filled: downloads its Google fonts int
 10. The master: `pnpm render` writes `out/<outputName>.mp4` (3840x2160).
 11. `pnpm preview`: a 720p copy under 30 MB for chat.
 12. `pnpm contact-sheet`: one PNG of stills from the master.
-13. Optional versions: the vertical 9:16 cut (`--pipeline=src/pipeline.vertical.json` on the steps above, with its own registry), `pnpm clips` for the shorts, and `pnpm posters` for the cover posters. See Pipeline configs, Clips and Posters.
+13. Optional versions: the vertical 9:16 cut (`--pipeline=src/pipeline.vertical.json` on the steps above, with its own registry), `pnpm clips` for the shorts, and `pnpm posters` for the cover posters. See Pipeline configs, Clips and Posters. A stand-alone Short is a project of its own, copied from the finished video: see Stand-alone Short projects.
 
 ## Scripts
 
@@ -150,6 +150,9 @@ A project can hold more than one config: `src/pipeline.json` (the default for ev
 | `out/clips/<outputName>-clips.manifest.json` | `pnpm clips` | Every clip of that config with its slug, frame range and duration. |
 | `src/posters.js`, `src/posters/` | the director | The poster registry and its scene modules. See Posters. The template ships one placeholder entry and a text-free placeholder scene, which the director replaces. |
 | `posters/` | `pnpm posters` | `poster-<n>-<slug>.png` (1280x720), `posters-sheet.png`, `posters-small.png`. |
+| `src/posters-shorts.js`, `src/posters-shorts/` | the director | A Short's vertical cover registry (`SCENES = {}`, `DEFAULT_SCENE`, `COVERS`) and its scene modules. See Stand-alone Short projects. |
+| `posters-shorts/` | `pnpm still` and ffmpeg | `<short-slug>-<k>-<slug>.png` (1080x1920), `<short-slug>-sheet.png`, `<short-slug>-small.png`. |
+| `creative/reference/parent/` | the lead | In a stand-alone Short: the parent's brief, lyrics, beat map and clip list, set aside. |
 | `out/<video>.manifest.json` | `pnpm render`, `pnpm draft` | `{fps, frames, width, height, scale, textonly, cuts: [video frame], blurWindows: [{from, to, samples}], source, firstFrame}`. `firstFrame` is the page frame shown at video frame 0 (0 unless `--frames`); cuts and blur windows are video frames inside the rendered range; a draft lists no blur windows. |
 
 The timing in effect comes from one function, `resolveProject` in `src/lib/project.js`, used by the page and by `scripts/lib/project.mjs` `loadProject`, so the page and the scripts always agree on the frame count:
@@ -385,6 +388,117 @@ Full-quality clips usually run over the 30 MB chat cap (55 to 110 MB for 25 to 4
 
 A poster is a scene like any other: every sung line must be registered, so register them hidden (`ctx.lyric(line.id, {css: 'opacity:0'})`) and draw the poster's own words in the world. Those words follow the on-screen copy rules: the song title, sung lyrics, exact feature names, and the logo only as `brief.logoUse` allows.
 
+## Stand-alone Short projects
+
+A stand-alone Short is a new mini-song of 15 to 35 s, written for the Shorts feed in the voice of a finished music video, the parent. Each one is its own project: a copy of the parent with a new take, rendered on the vertical config only. It isn't a cut short; cut shorts are segments of a song cut from its vertical master with `pnpm clips` (Clips). `music-video:music-video` runs the steps (S1 to S7). This section has the pipeline side. The numbers come from the two Jira Shorts: "Five or eight" (28.4 s, 852 frames) and "Highest, Through and Through" (31.64 s, 950 frames).
+
+### Create the project
+
+```sh
+mkdir -p <parent dir>/shorts
+rsync -a --exclude=/out/ --exclude=/.venv/ --exclude=/.venv-align/ --exclude=/.cache/ <parent>/ <parent dir>/shorts/<company-slug>-<short-slug>/
+cd <parent dir>/shorts/<company-slug>-<short-slug>
+pnpm setup:env
+pnpm setup:align
+```
+
+- `<parent dir>` is the folder that holds the parent project. A parent at `/Users/me/music-videos/music-video-jira` puts its Shorts at `/Users/me/music-videos/shorts/jira-five-or-eight` and `shorts/jira-highest`. Stop if the folder exists and isn't empty.
+- The excludes are anchored with `/`, so only the top-level folders are left behind (a `src/out/` would still copy). `rsync -a` copies the dotfiles (`.gitignore`) too.
+- Leave the environments behind. `.venv` and `.venv-align` hold absolute paths to the parent, and `.cache` holds Playwright's Chromium and the alignment models. `setup:env` and `setup:align` rebuild them in the new project: about 2 GB per Short (525 MB `.venv`, 493 MB `.venv-align` and 1.0 GB `.cache` in "Highest"). To skip the model download, copy the parent's `.cache/models` in before `setup:align` (Gotchas, model hosts).
+- What comes along: `src/brand.json`, `public/fonts/`, `public/brand/`, `creative/research.md`, the scripts, and the parent's scene modules under `src/scenes/` and `src/scenes-vertical/`, which the Short's scenes may import read-only.
+- Set the parent's files aside. Copy its `creative/brief.json`, `lyrics.screen.txt` and `lyrics.suno.txt` into `creative/reference/parent/` before you replace them. Move its `creative/beatmap.md` and `src/clips.vertical.json` there too: a Short has no clip list, and its beat map is `creative/beatmap-<outputName>.md`, or the per-line table in `direction-short.md` when the director keeps it there ("Five or eight" does). Both Jira Shorts also keep the parent's `alignment/` there. The parent's `creative/direction.md` and `direction-vertical.md` stay in `creative/` as the parent's look; the Short's own direction is `creative/direction-short.md`.
+
+### The take and the brief
+
+- Put the take at `public/audio/track.wav` and remove any `track.mp3`, so there's exactly one. From then on it's read-only: nothing trims, normalises or re-encodes it, and the render muxes it untouched.
+- Replace `creative/lyrics.screen.txt` and `lyrics.suno.txt` with the pitch text.
+- Read its length: `ffprobe -v error -show_entries format=duration -of default=nw=1 public/audio/track.wav` (31.640000 for "Highest").
+- Update `creative/brief.json` and keep the parent's other fields:
+
+| Field | Rule | "Highest" |
+|---|---|---|
+| `concept` | Names the pitch (its number and title in the parent's `creative/shorts-pitches.md`) and the parent song. | "Stand-alone YouTube Shorts mini-song (pitch 2 in creative/shorts-pitches.md, 'Why is every ticket Highest?'; ...)" |
+| `targetSeconds` | About 30. | 30 (28 for "Five or eight") |
+| `social` | `{vertical: true, shorts: false, clips: []}` | as the rule |
+| `posters` | `false`: the landscape posters don't apply. The covers are below. | `false` |
+| `parent` | The parent's absolute path. | `/Users/me/music-videos/music-video-jira` |
+| `targetNote` | The take's length, and "vertical only; the landscape registry still holds the parent's scenes and is unused". | "the take is 31.64 s (48 kHz stereo WAV). Vertical 1080x1920 only; ..." |
+| `docQuotes` | Exactly which product names may appear on screen, or "none: sung lyrics only". | the five Jira priority names, Highest, High, Medium, Low, Lowest, spelled exactly |
+| `hardRules` | The parent's rules, the Shorts default "No film grain on Shorts: grain 0 everywhere (Shorts default)", and any rules the user states, verbatim. | `No film grain on Shorts: grain 0 everywhere (Shorts default)`; the Jira Shorts also carry `User, verbatim: "Yeah keep it off" (no film grain: grain 0 everywhere)` |
+
+- Run `pnpm analyze` and `pnpm align`. Both always read `src/pipeline.json`, which has the same fps as the vertical config. Edit the screen and Suno lyrics to what was actually sung ("Five or eight": "And" was sung "Then the architect"), re-run `pnpm align`, then `pnpm check`. Here it's a data-only check: the data files parse and the timing resolves. Once `src/pipeline.vertical.json` is edited (below), every command passes `--pipeline=src/pipeline.vertical.json`, `check` included.
+
+### The vertical-only config
+
+Edit `src/pipeline.vertical.json` before the first command that passes it. `pnpm beatmap --pipeline=src/pipeline.vertical.json` names its file after `outputName`, so a beat map made before the edit is left behind under the template's name. Both Jira Shorts kept a stale `creative/beatmap-music-video-vertical.md` skeleton; ignore it.
+
+- `outputName`: `<company-slug>-<short-slug>-vertical` (`jira-highest-vertical`, so the master is `out/jira-highest-vertical.mp4`).
+- `tailSeconds`: 0 when the take ends on its own final chord or decay rather than being cut mid-note, so the loop has no silent frames. Listen to the last second to decide; there's no dB cut-off. `ffmpeg -hide_banner -sseof -0.3 -i public/audio/track.wav -af volumedetect -f null - 2>&1 | grep mean_volume` gives the level for the record: the "Highest" take's last 0.3 s is -41.4 dB and "Five or eight"'s is -26.4 dB, and both use `tailSeconds` 0. The template's example 0.3 s tail would add 9 silent frames to every loop.
+- `scenes`: `src/scenes-vertical/index.js`, as shipped. The rest stays as shipped: 1080x1920, 30 fps, `render.scale` 1, drafts at 540x960.
+- `src/pipeline.json` stays the parent's landscape config. `analyze` and `align` need it, and nothing else should use it.
+
+The frame count is `ceil((take + tailSeconds) × 30)`. "Highest": 31.64 × 30 = 949.2, so 950 frames, f0 to f949. "Five or eight": 28.4 × 30 = 852 frames, f0 to f851. The last frame is frames − 1, and it's the one that must match f0.
+
+**Always pass `--pipeline=src/pipeline.vertical.json`** to `still`, `draft`, `render`, `preview`, `contact-sheet`, `critique`, `pops`, `still-test`, `jitter`, `check` and `beatmap`, or use the `:vertical` scripts. Without it, a script uses `src/pipeline.json`: the 1920x1080 page with the parent's landscape scenes on the Short's timing. Whether that fails depends on the parent's registry, so don't count on an error to catch it.
+
+**Seam strips.** The critic can't pass a locked loop seam without strips covering every frame of it. A strip at `t` holds frames `round((t − 0.1) × 30)` to that + 11, so frames from `a` on need strips at `t = (a + 12j) / 30 + 0.1`. For the "Highest" seam f906 to f949: `pnpm critique --pipeline=src/pipeline.vertical.json --in out/vertical-draft-v<n>.mp4 --tag v<n>-extra --strips=0,30.30,30.70,31.10,31.50`. Strip 0 is f0 to f11, and the last strip is cut short at f949. The "Highest" v4 was rejected because f917 to f938 had no strip.
+
+**The render go.** On a stand-alone Short, the director always stops and asks the lead for a go before a heavy command, whether or not another Short is in flight. The pool cap of 2 counts only the workers of its own render, so two Short projects rendering at once would run four Chromiums and four encoders. The lead gives the go to one at a time.
+
+- Heavy (ask first): `draft`, any render (text-only, partial, a motion test or concept clip, the master), `still-test`, `jitter --all-lines`, and a batch of stills.
+- No go needed: a single still or two, `check`, `beatmap`, `critique`, `pops`, `preview`, `contact-sheet`, and single-window `jitter`.
+
+### The master and its checks
+
+`pnpm render:vertical` writes `out/<outputName>.mp4` at 1080x1920. Then `pnpm preview:vertical` and `pnpm contact-sheet --pipeline=src/pipeline.vertical.json` (`out/<outputName>-contact-sheet.png`). Check the master:
+
+```sh
+mkdir -p out/wip-loop
+ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=width,height,r_frame_rate,avg_frame_rate,nb_read_frames -of default=nw=1 out/<outputName>.mp4
+ffprobe -v error -select_streams a:0 -show_entries stream=duration -of default=nw=1 out/<outputName>.mp4
+ffprobe -v error -show_entries format=duration -of default=nw=1 public/audio/track.wav
+ffmpeg -v error -y -i out/<outputName>.mp4 -vf "select=eq(n\,0)" -frames:v 1 out/wip-loop/f0.png
+ffmpeg -v error -y -i out/<outputName>.mp4 -vf "select=eq(n\,<frames - 1>)" -frames:v 1 out/wip-loop/last.png
+ffmpeg -hide_banner -i out/wip-loop/f0.png -i out/wip-loop/last.png -lavfi psnr -f null - 2>&1 | grep Parsed_psnr
+```
+
+- **Size, fps, frames.** `width=1080`, `height=1920`, `r_frame_rate=30/1`, `avg_frame_rate=30/1`, and `nb_read_frames` equal to `ceil(duration × 30)`: 950 for "Highest", 852 for "Five or eight".
+- **Audio.** The audio stream's duration equals the take's: 31.640000 and 31.640000 for "Highest", 28.400000 and 28.400000 for "Five or eight".
+- **The loop.** PSNR of f0 against the last frame: 45.8 dB average for "Highest" and 47.8 dB for "Five or eight". That's the encode's noise on two matching pictures; on stills from the page, f949 and f0 of "Highest" were identical. For scale, "Highest" f948 against f0 reads 24.4 dB, so a seam one frame off is plain. Read both PNGs with the Read tool as well.
+
+Measured:
+
+- "Five or eight" master: 852 frames in 73.8 s at pool 2 (0.12 s per frame per worker, 0.09 s overall). The "Highest" master wasn't timed.
+- Masters: 11 MB ("Highest") and 6.6 MB ("Five or eight"). The preview aims at about 26 MB whatever the length, so on a Short it's bigger than the master: 24 MB and 20 MB.
+- `out/` after all the rounds: 787 MB for "Highest" (five rounds, a concept round, snapshots and sheets) and 414 MB for "Five or eight" (six rounds). Add about 2 GB of environments per Short.
+
+### Covers: the still-based registry
+
+`pnpm posters` can't draw a Short's covers: it always uses the 16:9 `src/pipeline.json` page and writes 1280x720. The covers are three 1080x1920 stills of an alternate registry on the vertical page instead.
+
+- `src/posters-shorts.js` exports `SCENES = {}`, `DEFAULT_SCENE` (the cover scene, `src/posters-shorts/covers.js`) and `COVERS`, the list `[{n, slug, frame}, ...]`. No script reads `COVERS`; it's the record of each cover's number, slug and frame. Cover k is drawn at song time `t` in `[k, k + 1)`, frame 30 k. The video's registries stay untouched, and the cover scene may import their kit read-only. Register every sung line hidden, as in Posters.
+- Check it: `pnpm check --pipeline=src/pipeline.vertical.json --scenes=src/posters-shorts.js`. On "Highest": `check: ok (82 source files scanned, 1 section, 8 lyric lines)`.
+- Render each cover (Chromium, so the sandbox is disabled; Gotchas):
+
+  ```sh
+  pnpm still --pipeline=src/pipeline.vertical.json --scenes=src/posters-shorts.js --frame=30 --out posters-shorts/<short-slug>-1-<slug>.png
+  pnpm still --pipeline=src/pipeline.vertical.json --scenes=src/posters-shorts.js --frame=60 --out posters-shorts/<short-slug>-2-<slug>.png
+  pnpm still --pipeline=src/pipeline.vertical.json --scenes=src/posters-shorts.js --frame=90 --out posters-shorts/<short-slug>-3-<slug>.png
+  ```
+
+  `still` defaults to scale 1, so each is 1080x1920. "Five or eight" wrote `posters-shorts/five-or-eight-1-meeting-was-an-eight.png`; the "Highest" set carries its look's name (`highest-house-1-full-house.png`).
+- The two review sheets aren't made by any script. Build them from the three PNGs: `<short-slug>-sheet.png`, each cover 1000 px tall side by side, and `<short-slug>-small.png`, each 360 px tall (about 200 px wide), to judge the read at shelf-thumbnail size. That 200 px stands in for the Shorts shelf: **Inferring (unverified)**, not a published figure.
+
+  ```sh
+  cd posters-shorts
+  ffmpeg -v error -y -i <short-slug>-1-<a>.png -i <short-slug>-2-<b>.png -i <short-slug>-3-<c>.png -filter_complex "[0]scale=-2:1000:flags=lanczos,pad=iw+20:ih:10:0[a];[1]scale=-2:1000:flags=lanczos,pad=iw+20:ih:10:0[b];[2]scale=-2:1000:flags=lanczos,pad=iw+20:ih:10:0[c];[a][b][c]hstack=inputs=3" -frames:v 1 <short-slug>-sheet.png
+  ffmpeg -v error -y -i <short-slug>-1-<a>.png -i <short-slug>-2-<b>.png -i <short-slug>-3-<c>.png -filter_complex "[0]scale=-2:360:flags=lanczos,pad=iw+10:ih:5:0[a];[1]scale=-2:360:flags=lanczos,pad=iw+10:ih:5:0[b];[2]scale=-2:360:flags=lanczos,pad=iw+10:ih:5:0[c];[a][b][c]hstack=inputs=3" -frames:v 1 <short-slug>-small.png
+  ```
+
+  On the "Highest" covers these give 1746x1000 and 636x360. This is the recipe, not a reproduction: the Jira sheets were built another way ("Highest" 1700x1000 and 620x360, "Five or eight" 1720x1000 and 600x344).
+- Measure each cover's bounds from its pixels and read every cover at full size, not only the sheets. `music-video:scene-authoring` and the playbook's S5 have the rules.
+- A cut short (a re-cut of one parent section) gets covers the same way, with the registry and `posters-shorts/` in the parent project.
+
 ## QA
 
 Every QA script prints `<script>: <message>` and exits 1 on bad arguments or failure. Labels exist only on the QA sheets, never in the video.
@@ -452,6 +566,6 @@ When it looks wrong:
 
 ## Left out on purpose
 
-From the howseen method: Howseen branding, look and work folders; its API keys and services (Cartesia voice, 21st.dev, Firecrawl); Mixkit music and SFX, synthesized SFX and voiceover (the Suno track is the only audio); stock media and svgl logo fetchers; LinkedIn and X formats (the configs here are 16:9 and the 9:16 Reels and TikTok cut); remake mode and loop seam checks; loudness normalisation (the Suno audio is muxed untouched); its poster-frame rules (posters here are their own compositions; see Posters); "Example data" labels (no data appears on screen); WebGL capture flags; seeking third-party animation libraries. Its taste rules (one accent colour, one visual system, one thing moving at a time) aren't pipeline rules; the direction decides them.
+From the howseen method: Howseen branding, look and work folders; its API keys and services (Cartesia voice, 21st.dev, Firecrawl); Mixkit music and SFX, synthesized SFX and voiceover (the Suno track is the only audio); stock media and svgl logo fetchers; LinkedIn and X formats (the configs here are 16:9 and the 9:16 Reels and TikTok cut); remake mode and its automated loop seam checks (a stand-alone Short's seam is checked by hand with ffmpeg; see Stand-alone Short projects); loudness normalisation (the Suno audio is muxed untouched); its poster-frame rules (posters here are their own compositions; see Posters); "Example data" labels (no data appears on screen); WebGL capture flags; seeking third-party animation libraries. Its taste rules (one accent colour, one visual system, one thing moving at a time) aren't pipeline rules; the direction decides them.
 
 From the old Remotion template: Remotion and React, the composition and `compositionId`, the hooks (`useSongFrame`, `useLine`, `useSectionBeats`, ...), the kinetic kit (`Backdrop`, `SlamIn`, `StampWords`, ...) and the motion components (`MaskedWords`, `ShotTimeline`, `SubframeBlur`, `CircleFlood`, `Scrim`), `--props` and `--composition`. Their jobs moved into the engine and the scene API above.

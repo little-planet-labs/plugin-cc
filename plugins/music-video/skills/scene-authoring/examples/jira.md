@@ -1,6 +1,6 @@
 # Worked example: the Jira video
 
-**Don't copy this look.** It's here for two things: a direction built from one unifying system that a satire could hang every joke on, and the first vertical adaptation, with its shorts. The board, the cards and the curtain were this video's choices, not defaults. What generalises is the structure: the vertical as an addendum to an approved direction, a parallel registry that never touches the landscape scenes, and clip edges designed into the staging.
+**Don't copy this look.** It's here for three things: a direction built from one unifying system that a satire could hang every joke on, the first vertical adaptation, with its shorts, and the first two stand-alone Shorts. The board, the cards and the curtain were this video's choices, not defaults. What generalises is the structure: the vertical as an addendum to an approved direction, a parallel registry that never touches the landscape scenes, and clip edges designed into the staging.
 
 Project: a satire of Jira from the point of view of the people who use it, "The Worst Tool (Except for All the Others)", a comic operetta patter song. Song: 179.6 s, about 144 BPM, 45 lines, 8 sections (an instrumental intro, four verses, three choruses). No logo anywhere (`logoUse: "omitted"`), and the video may be monetized. Atlassian's trademark page says its website "look" or "feel" shouldn't be reproduced, so nothing on screen is laid out like the product.
 
@@ -59,3 +59,35 @@ Clip 1's end and clip 2's start moved from about 50.2 s to 50.6 s: "before!" was
 - **Design the clip edges into the staging.** Clip-friendly openings changed three transitions, and the user decided them at the direction stop, before any vertical code.
 - **Measure row breaks before building.** The breaks table settled every line's layout up front, and the guard stops a later change from pushing a line under the app's UI.
 - **Look at props in the tall frame.** The hopper card read as a speck at 143 px and was enlarged to about 198 px.
+
+## The stand-alone Shorts
+
+After the video was finished, two pitches from the parent's `creative/shorts-pitches.md` became stand-alone Shorts. Each is a new Suno take with its own project under `shorts/`, its own `creative/direction-short.md`, critic rounds, master and three covers. Both keep the Blue Board system (the flat card, Inter, the capsule palette) and change the world or the angle. Both are vertical only, with `tailSeconds` 0, grain 0 (the Shorts default; the user confirmed it: "Yeah keep it off") and no logo.
+
+| Short | Take | Concept | Rounds |
+|---|---|---|---|
+| "Is it a five or an eight?" | 28.4 s, 852 frames | The parent's planning table from above. Every sung number is a poker card slapped down on its word, a 17 fits nowhere in the fanned scale, and the meeting's 8 grows until it fills the table. | ACCEPT at v5; v6 polish |
+| "Why is every ticket Highest?" | 31.64 s, 950 frames | The reverse angle of the parent's chorus stage: five tiers of seats, one per priority, with every ticket crammed into the red gallery over four empty tiers, until the gallery floor gives way. | ACCEPT at v3; v4 rejected; v5 accepted |
+
+Highest had a concept round: three concepts (The Full House, The Map Room, The Lift) and four registries, since The Full House was built with two endings, a floor collapse and a sell-out. The user picked The Full House with the floor collapse.
+
+### The hook and the loop
+
+- **Five or eight.** The take has a 1.2 s vamp before "Five". The director offered a clip starting on "Five"; the user chose the full master, so frame 0 had to carry the hook: the 5 held high, face up and tilted, with the 8 face up on the table. The first frame already reads "5 or 8". Its round-1 hook scored 5 on a 1 to 2 px drift; by v3 the 5 rose about 120 px by f15 and each pizzicato onset lit a lane.
+- **Five or eight's loop.** After the stab the company sinks out, the 8 shrinks home and the 5 rises into the frame-0 pose. One call, `dealPose(u)`, draws f0 and f851.
+- **Highest's hook.** The gallery plate is lit red from f0, and the late ticket (about 174 px) is mid-flight. The gallery leans on the f5 hit, and the ticket slams into its seat on the f11 hit, the song's largest accent.
+- **Highest's loop.** Line 8 fades on the stab, the crash rewinds as one move (f912 to f934), and the camera holds until the fade is at 0.26 or less, then eases back to frame 0's pose on a smoothstep (f908 to f936). The urgent ticket takes off over the last 22 frames on the same `flight(u)` as f0 to f11, so it reaches f0's point at f0's speed. The f0 and f949 stills matched in every pixel; the master measured 45.8 dB.
+
+### What the critic caught
+
+- **Line-8 clearance (Highest v3.1).** The last line sat about 25 px above the packed gallery for its 1.4 s hold. The hold was reframed lower (0.45 on y 888, pushing in to 0.5 on y 775), for 43 px or more on the stills.
+- **The gallery push whip (Highest v3.2).** The push into line 7 put most of a 2.7× zoom into four frames on `cam`, 1.33 per frame at its peak. On a smoothstep it peaked at 1.143.
+- **The loop-seam evidence rejection (Highest v4).** The lower line-8 framing left the camera about 170 px and 1.2× zoom from frame 0's pose at f905, so the move back now ran under the rewind, inside the locked reset. Its middle, f917 to f938, was on no strip, and the critic rejected the round with no visible defect. v5 held the camera to f908, moved it on a smoothstep (11.6 px and 1.0098 per frame at most, against 18.9 px and 1.0200), added strips 30.60 and 31.00, and was accepted.
+- **Five or eight's round 1** also had numerals crossing y 1500 in the close-up and cards showing their faces 5 frames before their sung words.
+
+### The covers
+
+- **Five or eight:** "but the meeting / was an eight!", "Five or / eight?", and "with their arms crossed, / looking sour", with the sung numerals 5, 8 and 13 on cards.
+- **Highest:** the full house under "Pick what matters!", the floor collapse with "Highest" on the cracked plate, and the urgent one in the follow spot under "actually urgent". They stay clear of the parent's covers for its Highest re-cut (a tower, a filed ticket, a priority ladder), which the user had already posted.
+- **A crack through a letter.** The collapse cover's crack split the "h" of "Highest" and left a white sliver, seen only at full size. The word became "High" and "est" with a 44 px gap over the crack.
+- **Shapes outside the safe box.** The code comment said every shape sat inside x 108 to 920 and y 220 to 1500. Signoff measured the pixels at x 91 to 943, with shapes below y 1500. After the fix the three covers measured x 110 to 916 and y 428 to 1496.

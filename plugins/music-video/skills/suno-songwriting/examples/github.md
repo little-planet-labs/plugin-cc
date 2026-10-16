@@ -93,3 +93,81 @@ Overwrought 80s power ballad, 80 BPM, piano intro, wailing electric guitar, powe
 
 - Planned at about 2:45 to 2:55; the take came back at **4:23**, with a 13.7 s piano lead-in, two instrumental breaks, and a **31 s instrumental tail**. The length was kept, and each instrumental got its own visual idea. Ask the user before re-rolling for length.
 - Written at 80 BPM; the analysis read the take at about **131 BPM with a half-time feel**. The alignment still worked.
+
+## Shorts pitches (2026-10-15, not yet made in Suno)
+
+After the video was finished, the lyricist wrote a Shorts pitch menu in this project (`creative/shorts-pitches.md`, 7 pitches): stand-alone mini-songs in the voice of "Unicorn Goodbye", each one joke that loops. Two of them, for format. `examples/jira.md` follows two pitches through to the take.
+
+### The style line, adapted
+
+The project has no `suno-prompt.md`, so the menu took the parent line from this file (191 characters, above) and labelled it **Inferring (unverified)**. It dropped "piano intro", "choir", "final chorus key change" and "no spoken intro or outro", and added the short-form asks (193 characters):
+
+```text
+Overwrought 80s power ballad, 80 BPM, wailing electric guitar, powerful female belt vocal, all vocals sung, vocals from the first beat, no intro, 30 seconds, big belted final note, dead serious
+```
+
+The first cue is a sung one, `[Power ballad, sung from the first beat]`, not "piano ballad", so it doesn't invite a piano lead-in. The full take had opened on a 14 s piano intro.
+
+### Timing basis
+
+From the aligned take: verse lines were sung in 2.7 to 3.4 s, with about 0.7 s between them, so about 3.8 s per line. Belted short lines ran 2 to 4.3 s. Not from the 80 BPM bar plan: the take read at about 131 BPM.
+
+### 1. Git is distributed. So why can't anyone work?
+
+- **The one joke:** git is built so no one depends on one server, and the whole team stops the moment GitHub does. It grows out of the song's own line "Git is distributed, so they say" (verse 2, the user's lyric). Blocked work during outages is **Confirmed by** https://hn.algolia.com/api/v1/items/46949452. The punchline is **Inferring**: our joke, not from a source.
+- **Hook line:** "Git is distributed, so they say".
+- **About 23 s as written:** 5 verse lines at about 3.8 s, plus a belted last line of about 4 s.
+- **The loop:** it ends on the belted "Distributed... to GitHub" and loops into "Git is distributed, so they say", so the Git/GitHub pair is the joke both ways.
+- **Is it new?** It grows out of verse 2 line 3, but the punchline is new.
+
+Screen and Suno (identical):
+
+```
+[Verse 1]
+[Power ballad, sung from the first beat]
+Git is distributed, so they say
+A copy lives on every drive
+No single point of failure here
+It's built to keep our work alive
+So why's the whole team gone today?
+[Belted, long held note]
+Distributed... to GitHub
+
+[End]
+```
+
+### 2. Did GitHub just break up with you?
+
+- **The one joke:** the unicorn page's apology reads like a breakup text, and "if the problem persists" becomes "I'm still heartbroken". The page copy is **Confirmed by** (second-hand: users quoting the page, which couldn't be fetched) https://hn.algolia.com/api/v1/items/41251633. It's sung in fragments, not shown as a quoted screenshot.
+- **Hook line:** "Sorry about that. That's all you said".
+- **About 23 s as written:** 5 lines at about 3.8 s, plus a belted last line of about 4 s.
+- **The loop:** it ends on the belted "The problem persists", and the loop's first line is the reply: "Sorry about that."
+- **Is it new?** A new joke. The full song quotes only the error page's first sentence and never uses "Sorry about that" or "persists". "My last request" nods to "service your request" in the chorus.
+
+Screen and Suno (identical):
+
+```
+[Verse 1]
+[Power ballad, sung from the first beat]
+Sorry about that. That's all you said
+A unicorn, and then you fled
+Please try refreshing. So I tried
+I hit refresh until I cried
+So here's my call, my last request
+[Belted, long held note]
+The problem persists
+
+[End]
+```
+
+### Checks (from the menu)
+
+Nothing is respelled ("GitHub" is sung as written), so a plain `diff` of the two files prints nothing.
+
+| Pitch | Suno characters | diff | `[Spoken]`/`[Rap]` | Sung words (Suno/screen) | Sung lines |
+|---|---|---|---|---|---|
+| 1. Distributed | 270 | empty | none | 35/35 | 6 |
+| 2. Sorry about that | 268 | empty | none | 35/35 | 6 |
+
+Compared with the Jira patter pitches (about 95 sung words in 8 lines), a ballad Short holds far fewer words: about 35 in 6 lines, for a similar length.
+
