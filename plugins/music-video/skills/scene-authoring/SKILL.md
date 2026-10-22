@@ -302,7 +302,7 @@ Scenes don't go to an inspector; they go to the critic. The builder can't judge 
 
 Judge rhythm, not sharpness: every round works from a half-res draft, and the full master comes last.
 
-**Sandbox.** `still`, `draft`, `render`, `still-test`, `jitter --all-lines` and `test:render` launch headless Chromium, which can't start inside the Claude Code Bash sandbox: run each of those with the sandbox disabled for that command (`dangerouslyDisableSandbox: true`). `check`, `beatmap`, `critique`, `pops`, single-window `jitter`, `preview` and `contact-sheet` run inside it.
+**Sandbox.** Headless Chromium can't launch inside the Claude Code Bash sandbox. Run `still`, `draft`, `render`, `still-test`, `jitter --all-lines` and `test:render` normally. Only if the Bash sandbox is on and a command fails with a mach-port error, re-run that one command with `dangerouslyDisableSandbox: true` (or ask the user to turn the sandbox off with `/sandbox`). Never pass it pre-emptively.
 
 **Machine load.** One heavy render on the machine at a time: never a draft, a text-only render, a concept clip or the master alongside another render, `still-test`, or alignment. The render pool runs at most `render.pool` workers (2 by default, each a Chromium plus an x264 encoder); `--pool=<n>` changes it for one run, and above 2 prints a warning. Don't raise it unless the lead says so. Measured at pool 2:
 

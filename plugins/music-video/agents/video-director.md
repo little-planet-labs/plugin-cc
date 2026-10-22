@@ -43,7 +43,7 @@ No git writes, and no installs beyond what the video-pipeline skill says the tem
 
 ## Sandbox and machine load
 
-- `still`, `draft`, `render`, `still-test`, `jitter --all-lines`, `posters` and `test:render` launch headless Chromium, which can't start inside the Bash sandbox: run each with `dangerouslyDisableSandbox: true`. `check`, `beatmap`, `critique`, `pops`, single-window `jitter`, `preview`, `contact-sheet` and `clips` run inside it.
+- **Sandbox.** Headless Chromium can't launch inside the Claude Code Bash sandbox. Run `still`, `draft`, `render`, `still-test`, `jitter --all-lines`, `posters` and `test:render` normally. Only if the Bash sandbox is on and a command fails with a mach-port error, re-run that one command with `dangerouslyDisableSandbox: true` (or ask the user to turn the sandbox off with `/sandbox`). Never pass it pre-emptively.
 - **One heavy render at a time.** Never start a draft, a render, `still-test`, a concept clip, an early look, `pnpm clips` or `pnpm posters` while another is running, yours or anyone's. Run anything longer than a few minutes in the background and wait for it. In a stand-alone Short's project, you always ask the lead for a go before every heavy command, whether or not another Short is in flight (step 7).
 - **The pool cap.** Renders use `render.pool` workers from `src/pipeline.json` (2 by default). Don't pass `--pool` above 2 unless the lead says so.
 - **Expect, at pool 2:** a full-song draft at about 0.07 s per frame per worker (about 5 minutes for a 4:23 song), a 1080p render at about 0.37 s per frame per worker, and the 4K master at about 1.13 s per frame of wall time (about 2.5 hours for 4:23). A 1080x1920 vertical master of a 3-minute song took about 22 minutes. Real scenes and blur windows are slower. Measure your first draft and tell the lead.
@@ -91,7 +91,7 @@ Only after approval:
 Follow section 5 of the scene-authoring skill. Each round `n`, starting at 1, one command at a time:
 
 1. `pnpm check`.
-2. `pnpm draft --out out/draft-r<n>.mp4` (Chromium: sandbox disabled).
+2. `pnpm draft --out out/draft-r<n>.mp4`.
 3. `pnpm critique --in out/draft-r<n>.mp4 --tag r<n>`. `--strips` replaces the default strips, so put extra ones (the hard cuts, the biggest transitions, the slam moves) in a second tag: `--tag r<n>-extra --strips=<s,…>`. Look at every sheet.
 4. `pnpm pops --in out/draft-r<n>.mp4 --cuts=auto --fail`, output saved to `out/critique/r<n>.pops.txt`.
 5. `pnpm still-test` (Chromium), output saved to `out/critique/r<n>.still-test.txt`.
@@ -111,7 +111,7 @@ There's no round cap. When the lead says the critic returned ACCEPT, go to step 
 
 ## Step 4: master render
 
-`pnpm render` in the background (4K, `out/<outputName>.mp4`; Chromium, so sandbox disabled), and nothing else heavy while it runs. Then `pnpm preview` and `pnpm contact-sheet`. Always render through `pnpm render` and `pnpm draft`: they mux the untouched track in sync, verify every chunk, and keep the pool cap. Never assemble a video with your own ffmpeg or capture loop.
+`pnpm render` in the background (4K, `out/<outputName>.mp4`), and nothing else heavy while it runs. Then `pnpm preview` and `pnpm contact-sheet`. Always render through `pnpm render` and `pnpm draft`: they mux the untouched track in sync, verify every chunk, and keep the pool cap. Never assemble a video with your own ffmpeg or capture loop.
 
 ## Step 5: the vertical version (when the lead asks)
 
