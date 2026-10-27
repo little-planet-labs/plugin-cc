@@ -1,8 +1,8 @@
 <svg width="2425" height="668" viewBox="0 0 2425 668" fill="none" xmlns="http://www.w3.org/2000/svg">
-<mask id="mask0_2_39" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="668" height="668">
-<circle cx="334" cy="334" r="334" fill="#D9D9D9"/>
-</mask>
-<g mask="url(#mask0_2_39)">
+<clipPath id="mask0_2_39">
+<circle cx="334" cy="334" r="334"/>
+</clipPath>
+<g clip-path="url(#mask0_2_39)">
 <circle cx="334" cy="334" r="309" stroke="#00572E" stroke-width="50"/>
 <circle cx="333.5" cy="333.5" r="297.5" fill="#00572E"/>
 <path d="M152.347 665.012C39.8094 568.221 280.381 556.256 413.86 401.061C547.338 245.866 523.177 6.21139 635.715 103.002C748.254 199.793 731.278 404.067 597.8 559.262C464.321 714.457 264.886 761.803 152.347 665.012Z" fill="#8DEEFF"/>
