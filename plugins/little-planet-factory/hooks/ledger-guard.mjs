@@ -16,7 +16,8 @@
 //
 //   - deletes, moves, or truncates a factory state file (factory-ledger.md,
 //     factory-request.md, factory-review-*.md, factory-ledger-<unit>.md) in
-//     any directory, via rm/unlink/shred, mv, tee, or a > redirect; or
+//     any directory, via rm/unlink/shred, mv, tee, or an output redirect
+//     whose parsed target is one; or
 //   - deletes by glob: rm/unlink/shred with * ? [ in an argument, or find
 //     with -delete and a glob in its arguments or patterns — in any
 //     directory at all. PreToolUse input doesn't carry scratchpad_dir, so
@@ -38,10 +39,11 @@
 //
 // Static shell parsing has limits; accepted and documented here: variable
 // indirection (`rm -f "$LEDGER"`), backslash-escaped globs (denied as if
-// they were globs), stdin-fed deletes (`... | xargs rm`, which carry no
-// target words), and a bare `find DIR -delete` with no glob anywhere. The
-// defense in depth is the agent instructions plus the overseer's
-// rebuild-from-transcript recovery.
+// they were globs), nested command strings (`eval "rm …"`, `sh -c …`),
+// stdin-fed deletes (`... | xargs rm`, which carry no target words), and a
+// bare `find DIR -delete` with no glob anywhere. The defense in depth is
+// the agent instructions plus the overseer's rebuild-from-transcript
+// recovery.
 //
 // It fails open: any error (bad JSON, oversized stdin, a timeout) ends it
 // with exit code 0 and nothing on stdout or stderr, so a broken hook can
@@ -50,12 +52,6 @@
 // never changes the tool input. No npm dependencies.
 
 const PROTECTED_NAME = /^factory-(?:ledger|request|review)(?:-[^\s/]*)?\.md$/;
-const PROTECTED_IN_TEXT = /factory-(?:ledger|request|review)(?:-[^\s"'|;&><]*?)?\.md/;
-// A > family redirect straight onto a protected file: >, >>, >|, >& with
-// optional whitespace and quotes, any directory prefix, and a basename
-// boundary so "factory-ledger.markdown" doesn't match.
-const TRUNCATION =
-  />[&|>]?\s*["']?(?:[^\s"'|;&><]*\/)?factory-(?:ledger|request|review)(?:-[^\s"'|;&><]*?)?\.md["']?(?![^\s;&|><()])/;
 
 const GLOB = /[*?[]/;
 const WRITE_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
@@ -71,7 +67,16 @@ const STATE_WRITERS = new Set([
 ]);
 const DELETE_VERBS = new Set(['rm', 'unlink', 'shred']);
 const MOVE_VERBS = new Set(['mv', 'tee']);
-const PREFIXES = new Set(['sudo', 'command', 'builtin', 'env', 'time', 'nice', 'nohup', 'xargs']);
+// Command prefixes: the word after one is still in command position.
+const PREFIXES = new Set(['sudo', 'command', 'builtin', 'env', 'time', 'nice', 'nohup', 'xargs', 'exec', 'eval', '!']);
+// Shell control words: whatever follows one is a fresh command, so it gets
+// the same treatment as a word after ; — without this, `if ...; then rm x`
+// has `then` swallow the command slot and `rm` passes uninspected.
+const SHELL_KEYWORDS = new Set([
+  'if', 'then', 'elif', 'else', 'fi',
+  'for', 'in', 'while', 'until', 'do', 'done',
+  'case', 'esac', '{', '}',
+]);
 const SEPARATORS = new Set([';', '|', '&', '(', ')', '`', '>', '<', '>>', '<<']);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
@@ -118,10 +123,12 @@ function reasonGlob() {
 // literally (an escaped glob character still reads as that character), and
 // backslashes inside quotes are kept as-is. A newline separates commands
 // like a semicolon, because it does. Operators are single tokens;
-// >> and << are merged so the walker can skip their targets. $ introduces
+// >> and << are merged so the walker can read their targets. $ introduces
 // nothing special: $(cmd) splits into the words "$", "(", "cmd" — and the
 // walker treats the parenthesized part as a fresh command, which is all
-// this hook needs.
+// this hook needs. Quoted or escaped parentheses remain words in the stream;
+// whether they mean shell grouping or find-expression grouping is for the
+// walker's argument collection, not the tokenizer, to decide.
 function splitWords(command) {
   const words = [];
   let word = '';
@@ -207,31 +214,33 @@ function reasonWrite(name) {
 }
 
 function denyReason(command) {
-  const trunc = TRUNCATION.exec(command);
-  if (trunc) {
-    const name = PROTECTED_IN_TEXT.exec(trunc[0]);
-    return reasonProtected(name ? name[0] : trunc[0], 'truncate or overwrite');
-  }
-
   const words = splitWords(command);
   let expectCommand = true;
-  let mode = null; // 'delete' | 'move' | 'find' during its arguments
-  let skipWord = false; // the word after a redirection operator is its target
+  let mode = null; // 'delete' | 'move' while a destructive command's arguments are read
+  let redirect = null; // 'out' | 'in' while a redirection's target word comes next
 
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
 
-    if (skipWord && !SEPARATORS.has(w)) {
-      skipWord = false;
+    if (redirect !== null && !SEPARATORS.has(w)) {
+      // A redirection's parsed target word: an output redirect onto a
+      // protected file truncates or overwrites it; an input redirect reads
+      // from it, which is fine. Parsing it as a word (quotes stripped,
+      // spaces held inside quotes) is what keeps
+      // grep -F "> factory-ledger.md" innocent and the real thing denied.
+      if (redirect === 'out' && PROTECTED_NAME.test(basename(w))) {
+        return reasonProtected(basename(w), 'truncate or overwrite');
+      }
+      redirect = null;
       continue;
     }
-    skipWord = false;
+    redirect = null;
 
     if (SEPARATORS.has(w)) {
-      if (w === '>' || w === '<' || w === '>>' || w === '<<') {
-        // Don't drop mode: shell allows redirects mid-command
-        // (`rm a > log b`), so arguments can follow.
-        skipWord = true;
+      if (w === '>' || w === '>>') {
+        redirect = 'out';
+      } else if (w === '<' || w === '<<') {
+        redirect = 'in';
       } else {
         expectCommand = true;
         mode = null;
@@ -242,7 +251,7 @@ function denyReason(command) {
     if (expectCommand) {
       if (w.startsWith('-') || ASSIGNMENT.test(w)) continue;
       const base = basename(w);
-      if (PREFIXES.has(base)) continue;
+      if (SHELL_KEYWORDS.has(base) || PREFIXES.has(base)) continue;
       expectCommand = false;
       if (DELETE_VERBS.has(base)) {
         mode = 'delete';
@@ -250,9 +259,16 @@ function denyReason(command) {
         mode = 'move';
       } else if (base === 'find') {
         // Judge a find invocation whole: -delete can come after a glob
-        // pattern in its expression.
+        // pattern in its expression, and ( ... ) group that expression —
+        // escaped or quoted, they tokenize the same — so they're collected
+        // as arguments rather than stopping the collection.
         const args = [];
-        while (i + 1 < words.length && !SEPARATORS.has(words[i + 1])) args.push(words[++i]);
+        while (
+          i + 1 < words.length &&
+          (!SEPARATORS.has(words[i + 1]) || words[i + 1] === '(' || words[i + 1] === ')')
+        ) {
+          args.push(words[++i]);
+        }
         const found = denyReasonInFind(args);
         if (found !== null) return found;
       }

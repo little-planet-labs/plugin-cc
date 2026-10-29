@@ -219,6 +219,58 @@ state_file_moves_and_truncations_are_denied() {
   expect_deny "worker, through tee" "factory-request.md"
 }
 
+# Copilot review findings on PR #4: compound-syntax command slots, grouped
+# find expressions, and redirection parsing under quoting.
+compound_syntax_and_quoting() {
+  bash_call 'if [ -f factory-ledger.md ]; then rm factory-ledger.md; fi'
+  expect_deny "conditional delete after then" "factory-ledger.md"
+  bash_call 'for d in a b; do rm -f factory-request.md; done'
+  expect_deny "loop body delete after do" "factory-request.md"
+  bash_call 'if true; then rm -f /x/scratchpad/*; fi'
+  expect_deny "conditional glob cleanup after then" "glob"
+  bash_call 'while read f; do rm -rf /x/*; done < /tmp/list'
+  expect_deny "loop body glob after do" "glob"
+  bash_call 'case $f in *) rm -f *;; esac'
+  expect_deny "rm in a case arm" "glob"
+  bash_call '{ rm -f /x/*; }'
+  expect_deny "delete inside a brace group" "glob"
+  bash_call '! rm -f /x/scratchpad/*'
+  expect_deny "negated glob delete" "glob"
+  bash_call 'exec rm -f factory-ledger.md'
+  expect_deny "through exec" "factory-ledger.md"
+  bash_call 'eval rm -f /x/*'
+  expect_deny "through eval, unquoted" "glob"
+
+  bash_call 'find . -type f \( -name "*.md" -o -name "*.tmp" \) -delete'
+  expect_deny "find, escaped-paren group with -delete" "glob"
+  bash_call 'find . "(" -name "*.tmp" ")" -delete'
+  expect_deny "find, quoted-paren group with -delete" "glob"
+  bash_call 'find /x \( -name "factory-ledger.md" \) -delete'
+  expect_deny "find, protected name in a group" "factory-ledger.md"
+
+  bash_call 'printf x > "/tmp/my scratchpad/factory-ledger.md"'
+  expect_deny "redirect target with a quoted space" "factory-ledger.md" "truncate or overwrite"
+  bash_call ': > "$DIR"/factory-ledger.md'
+  expect_deny "colon truncate, composite quoting" "factory-ledger.md"
+
+  # The regex-based redirect check these replace could not tell quoted text
+  # from an operator: these must pass.
+  bash_call 'grep -F "> factory-ledger.md" README.md'
+  expect_silent "grep -F of a redirect-looking string"
+  bash_call 'printf "rm factory-ledger.md"'
+  expect_silent "printf of a delete-looking string"
+  bash_call 'cat < factory-ledger.md'
+  expect_silent "input redirect reads the ledger"
+  bash_call 'while read l; do echo "$l"; done < factory-request.md'
+  expect_silent "loop reading the request file"
+  bash_call 'if [ -f factory-ledger.md ]; then echo yes; fi'
+  expect_silent "test -f on the ledger"
+  bash_call 'case $f in factory-ledger.md) echo hit;; esac'
+  expect_silent "case pattern naming the ledger"
+  bash_call 'echo hi > /tmp/ordinary.md'
+  expect_silent "redirect onto an ordinary file"
+}
+
 benign_commands_pass() {
   bash_call 'rm -f /Users/x/.claude/scratchpad/sess-123/worker-script.sh'
   expect_silent "worker, own temp file by exact path"
@@ -377,6 +429,7 @@ run_test hooks_json_registers_bash_guard
 run_test glob_deletes_are_denied
 run_test state_file_deletes_are_denied
 run_test state_file_moves_and_truncations_are_denied
+run_test compound_syntax_and_quoting
 run_test state_file_writes_are_denied
 run_test benign_commands_pass
 run_test bare_and_builtin_agent_types_are_denied
