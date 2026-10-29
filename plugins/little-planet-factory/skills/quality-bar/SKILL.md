@@ -1,6 +1,6 @@
 ---
 name: quality-bar
-description: The quality bar Little Planet Factory agents hold work to so defects are prevented on the first pass rather than found by review — which work counts as foundational, pre-mortems that turn invariants into named tests, per-unit and repair-diff review, treating claims and verification output skeptically, and the default rule that agents don't write user-facing copy beyond inventoried labels. Per-role responsibilities for the overseer, manager, worker, researcher, inspector, and signoff.
+description: The quality bar Little Planet Factory agents hold work to so defects are prevented on the first pass rather than found by review — which work counts as foundational, pre-mortems that turn invariants into named tests, the rule that compatibility code exists only for formats that verifiably shipped, per-unit and repair-diff review, treating claims and verification output skeptically, and the default rule that agents don't write user-facing copy beyond inventoried labels. Per-role responsibilities for the overseer, manager, worker, researcher, inspector, and signoff.
 user-invocable: false
 ---
 
@@ -28,7 +28,15 @@ Before dispatching a foundational unit, the lead writes its pre-mortem in the br
 - **Failure modes.** Specific ways this change could go wrong: partial failure, retries, empty and boundary inputs, concurrent writers, stale caches, time zones and DST, a removed default that existing data relies on.
 - **A named test for each.** Every invariant and failure mode maps to a required test, named after what it asserts. The worker writes those tests, and its report maps each one to its test and result.
 
-A foundational unit with an empty pre-mortem is either trivial or under-thought, so say which. When a change makes code ignore or override something, the pre-mortem lists everything that writes that thing. When a change removes a default, it says what happens to existing data that relied on it.
+A foundational unit with an empty pre-mortem is either trivial or under-thought, so say which. When a change makes code ignore or override something, the pre-mortem lists everything that writes that thing. When a change removes a default, it says what happens to existing data that relied on it — and existing data counts only when the format that wrote it shipped, per Compatibility code below.
+
+## Compatibility code is for formats that shipped
+
+A migration, fallback, legacy branch, deprecation path, or version guard for a previous format — state files, schemas, payloads, config, CLI flags — is never written by default, and never requested in a brief by default. "Don't break existing users" is a fact to verify, not a default. Compatibility code exists only when an explicit instruction asked for it — the user in the session, or the project's `CLAUDE.md` naming the format — and only for a format that actually shipped.
+
+- **Verify shipped first, before writing or requesting any of it.** Check git history on the default branch for when the format last changed, and the published package or deployed version for whether a release carries the old shape. When that takes more than a quick look, send it to the researcher. A format that never left a working tree, a feature branch, or this session — written by dev builds, test fixtures, local experiments, or an earlier unit in the same run — has not shipped, and there is nothing to be compatible with. When you can't tell (no history reachable, a private deploy), ask the user; don't write the compat path while unsure.
+- **When it hasn't shipped, change the format in place.** Move every consumer to the new shape, regenerate or rewrite what the old shape wrote — including data written earlier in this run — and delete the old shape's code, tests, fixtures, and docs. The old format doesn't get a reader, a writer, a migration, or a trust rule.
+- **When an explicit instruction asks for compatibility anyway,** still run the shipped check and report what it found before writing the path: a format that never shipped protects nobody, and the asker may not know it was never out.
 
 ## Tests that prove the property
 
@@ -98,6 +106,7 @@ This is on unless the project's `CLAUDE.md` says agents may write copy, or the u
 - Classify each unit as foundational or not during planning, and state the classification in your plan.
 - Write the pre-mortem for foundational units yourself, and put it in the brief with its named-test mapping. When several units share an interface, pin its exact signatures in the briefs before dispatch.
 - Send foundational units to per-unit inspection, and run the rounds and repair reviews above.
+- When a unit changes a shared format — schema, state file, payload, config, CLI flag — pin the new shape in the brief and say explicitly whether the old format needs compatibility, after the shipped check. Default to no, and never promise old behavior for something that hasn't shipped. A mid-session format change re-briefs every unit that touches the format the same way.
 - Verify claims before relaying them to the user or into briefs.
 - Send unverified research findings and Unknowns back to the researcher, for up to three rounds per question, unless you've checked that verification is impossible. Grant what you can, such as scope, access, or permission to run a test, and hand up what only the user can grant.
 - Include the copy inventory in your final report.
@@ -105,12 +114,14 @@ This is on unless the project's `CLAUDE.md` says agents may write copy, or the u
 ### Manager
 
 - Apply the bar to your sub-task: classify units, write pre-mortems for foundational units that the overseer's brief didn't cover, and run per-unit and repair reviews.
+- Pin changed formats in worker briefs the same way: the new shape, and an explicit compatibility answer after the shipped check. Default to no.
 - Verify workers' claims before consolidating them into your report.
 - Send unverified research findings and Unknowns back to the researcher, for up to three rounds per question, unless you've checked that verification is impossible. Grant what you can, such as scope, access, or permission to run a test, and hand up what only the user can grant.
 
 ### Worker
 
 - Write every named test in your brief, and report each one against its invariant with the command and result lines.
+- Never add compatibility code for an older format — migration, fallback, legacy branch, version guard — unless the brief explicitly asks for it. Data and code in an old format from earlier in the run, including your own earlier output, move to the new format. If you believe compatibility is genuinely needed, report it as a question instead of writing it.
 - Run new tests green before relying on them, and confirm the executed count went up.
 - Dispute a brief or a finding with evidence when you think it's wrong. Don't comply silently.
 - List every user-facing string you added or changed, and flag placeholders.
@@ -126,11 +137,13 @@ This is on unless the project's `CLAUDE.md` says agents may write copy, or the u
 
 - Check the copy inventory against the diff. Every new or changed user-facing string must be listed verbatim, with placeholders flagged. A missing entry is a gap.
 - Treat product prose written against the default rule, and pre-mortem tests that were never written, as loose ends.
+- Treat compatibility code nobody asked for, or that protects a format that never shipped, as unrequested scope.
 - Mark a requirement Done only on evidence you checked yourself, not on a unit's report.
 
 ### Inspector
 
 - For foundational units, check that every pre-mortem item has a test that asserts the property, not something next to it. A missing or decorative test is a blocking finding.
+- Before passing any compatibility code — migration, fallback, legacy branch, version guard — ask who it protects, and verify the answer: git history on the default branch, the published or deployed version. Compat code nobody asked for, or protecting a format that never shipped, is a blocking finding, and so is a brief that asks for one.
 - Treat zero-test passes, unquoted verification, and new warnings as failed tooling.
 - Treat product prose written against the default rule as a blocking finding, and so is a user-facing string missing from the inventory.
 - Label your own root-cause claims as confirmed (traced) or likely.

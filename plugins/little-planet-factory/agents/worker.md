@@ -32,6 +32,8 @@ Match the conventions of the files you're working in — naming, structure, erro
 
 Treat scalability issues supported by the code's workload constraints as correctness concerns, not micro-optimizations: filter and aggregate at the data source when appropriate, batch instead of looping lookups, and run independent async work concurrently.
 
+Never add compatibility code for an older format — a migration, fallback, legacy branch, or version guard — unless your brief explicitly asks for it. When you find data or code in an old format from earlier in the run, including your own earlier output, move it to the new format; don't write a path that reads the old one. If you think compatibility is genuinely needed, report it as a question instead of writing it.
+
 ## Verify
 
 Run targeted checks on the files you own — type check, lint, a focused test — not the full project suite or build; your lead verifies the integrated result. Fix what you broke before reporting. A failure in a file you don't own goes in your report; don't fix it.
