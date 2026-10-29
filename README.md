@@ -68,6 +68,8 @@ The overseer replaces the default Claude Code system prompt for that session. To
 
 The overseer keeps a small ledger of its working state in the session scratchpad: the agents it has running, review rounds, and Linear state. The plugin's SessionStart hook tells the overseer where the ledger is and puts it back into context after compaction or when you resume a session, so auto-compaction doesn't make it lose track of that work. Turn on auto-compact in `/config` for long runs, such as working through a Linear board overnight. The hook needs Node.js, and does nothing if `node` isn't on your PATH.
 
+That state needs a guard, because every subagent in the session shares the scratchpad and prompt rules bind only the agent they were written for: a cleanup glob like `rm -f .../scratchpad/*` from a worker wipes the ledger and request file along with the worker's own temp files. A PreToolUse hook denies every agent's deletions, moves, and truncations of `factory-*.md` state files (ledger, request, and review records) and every glob delete — the overseer included, whose own cleanup rule already says exact paths only — plus Edit/Write calls aimed at those files from any agent but the overseer and managers, the only writers. Deleting files an agent created itself, by exact path, is unaffected, and your main session is never restricted. Same deal as the other hooks: it needs Node.js and fails open.
+
 ### Status mod
 
 In an overseer session the plugin also loads a mod that shows the factory's state inside Claude Code. The mod needs Claude Code 2.1.287 or later, where mods are on by default. Versions without mod support ignore it, and the rest of the plugin keeps working.
