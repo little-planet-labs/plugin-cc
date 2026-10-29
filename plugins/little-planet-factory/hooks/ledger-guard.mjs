@@ -41,9 +41,12 @@
 // indirection (`rm -f "$LEDGER"`), backslash-escaped globs (denied as if
 // they were globs), nested command strings (`eval "rm …"`, `sh -c …`),
 // stdin-fed deletes (`... | xargs rm`, which carry no target words), and a
-// bare `find DIR -delete` with no glob anywhere. The defense in depth is
-// the agent instructions plus the overseer's rebuild-from-transcript
-// recovery.
+// bare `find DIR -delete` with no glob anywhere. A quoted delimiter makes
+// a heredoc body literal data (skipped); an unquoted one keeps the body
+// scanned, because command substitutions in it really do execute, so a
+// literal dangerous-looking line there can still be denied. The defense in
+// depth is the agent instructions plus the overseer's
+// rebuild-from-transcript recovery.
 //
 // It fails open: any error (bad JSON, oversized stdin, a timeout) ends it
 // with exit code 0 and nothing on stdout or stderr, so a broken hook can
@@ -69,6 +72,20 @@ const DELETE_VERBS = new Set(['rm', 'unlink', 'shred']);
 const MOVE_VERBS = new Set(['mv', 'tee']);
 // Command prefixes: the word after one is still in command position.
 const PREFIXES = new Set(['sudo', 'command', 'builtin', 'env', 'time', 'nice', 'nohup', 'xargs', 'exec', 'eval', '!']);
+// Prefix options that take a separate value word: without consuming it,
+// `nice -n 5 rm …` mistakes `5` for the executable and never inspects rm.
+// Glued forms (-n5, --user=root) are one word and already skipped as flags.
+const PREFIX_OPT_VALUES = {
+  nice: new Set(['-n', '--adjustment']),
+  sudo: new Set(['-u', '-g', '-U', '-h', '-p', '-C', '-T', '-t', '--user', '--group', '--other-user', '--host', '--prompt', '--chdir', '--command-timeout', '--timeout']),
+  env: new Set(['-u', '-S', '-C', '--unset', '--chdir', '--split-string']),
+  time: new Set(['-o', '-f', '--output', '--format']),
+  xargs: new Set(['-n', '-s', '-P', '-I', '-L', '-E', '-e', '--max-args', '--max-chars', '--max-procs', '--replace', '--max-lines', '--eof']),
+};
+// Strings a token can be when it plays an operator role. The tokenizer
+// emits them with op=true when they arrive unquoted; a quoted or escaped
+// copy ('>', \>) is a plain word — see splitWords.
+const OPERATOR_STRINGS = new Set([';', '|', '&', '(', ')', '`', '>', '<', '>>', '<<', '>|', '>&', '<&', '<<-', '\n']);
 // Shell control words: whatever follows one is a fresh command, so it gets
 // the same treatment as a word after ; — without this, `if ...; then rm x`
 // has `then` swallow the command slot and `rm` passes uninspected.
@@ -77,7 +94,6 @@ const SHELL_KEYWORDS = new Set([
   'for', 'in', 'while', 'until', 'do', 'done',
   'case', 'esac', '{', '}',
 ]);
-const SEPARATORS = new Set([';', '|', '&', '(', ')', '`', '>', '<', '>>', '<<']);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 const MAX_STDIN_BYTES = 1024 * 1024;
@@ -118,51 +134,73 @@ function reasonGlob() {
   );
 }
 
-// Splits a shell command into words and operator tokens. Quotes group but
-// are stripped; a backslash outside quotes keeps the next character
-// literally (an escaped glob character still reads as that character), and
-// backslashes inside quotes are kept as-is. A newline separates commands
-// like a semicolon, because it does. Operators are single tokens;
-// >> and << are merged so the walker can read their targets. $ introduces
-// nothing special: $(cmd) splits into the words "$", "(", "cmd" — and the
-// walker treats the parenthesized part as a fresh command, which is all
-// this hook needs. Quoted or escaped parentheses remain words in the stream;
-// whether they mean shell grouping or find-expression grouping is for the
-// walker's argument collection, not the tokenizer, to decide.
+// Splits a shell command into tokens: { t, op } where op marks real
+// operator tokens (> >> >| >& < << <<- <& ; | & ( ) ` and the newline),
+// and words carry a q flag when any of their characters arrived quoted or
+// escaped. Quotes group but are stripped; an unquoted # at a word's start
+// begins a comment that runs to the newline (before quote parsing, so an
+// apostrophe in a comment can't swallow the script); a backslash outside
+// quotes keeps the next character literally (an escaped glob still reads
+// as a glob) except a backslash-newline, which is a line continuation and
+// joins its word across lines, as the shell does. Backslashes inside
+// quotes are kept as-is. Operators are single tokens whose composite forms
+// are merged so the walker can read them: >> << <<-. $ introduces nothing
+// special: $(cmd) splits into "$", "(", "cmd" — and the walker treats the
+// parenthesized part as a fresh command, which is all this hook needs.
+// Quoted or escaped parentheses remain word tokens; whether they mean
+// shell grouping or find-expression grouping is for the walker's argument
+// collection, not the tokenizer, to decide.
 function splitWords(command) {
-  const words = [];
+  const tokens = [];
   let word = '';
-  let quote = null;
+  let wordQuoted = false;
+  const quote = { ch: null };
   const flush = () => {
     if (word !== '') {
-      words.push(word);
+      // A word made only of operator characters that arrived quoted or
+      // escaped ('>', \>) is data — grep '>' ledger.md stays a read.
+      tokens.push({ t: word, op: !wordQuoted && OPERATOR_STRINGS.has(word), q: wordQuoted });
       word = '';
+      wordQuoted = false;
     }
   };
   for (let i = 0; i < command.length; i++) {
     const c = command[i];
-    if (quote !== null) {
-      if (c === quote) quote = null;
+    if (quote.ch !== null) {
+      if (c === quote.ch) quote.ch = null;
       else word += c;
       continue;
     }
     if (c === "'" || c === '"') {
-      quote = c;
+      quote.ch = c;
+      wordQuoted = true;
+      continue;
+    }
+    if (c === '#' && word === '' && !wordQuoted) {
+      while (i + 1 < command.length && command[i + 1] !== '\n') i++;
       continue;
     }
     if (c === '&' || c === '|' || c === ';' || c === '(' || c === ')' || c === '`') {
       flush();
-      words.push(c);
+      tokens.push({ t: c, op: true });
       continue;
     }
     if (c === '>' || c === '<') {
       flush();
+      let merged = c;
       if (command[i + 1] === c) {
-        words.push(c + c);
+        merged = c + c;
         i++;
-      } else {
-        words.push(c);
       }
+      if (command[i + 1] === '|' || command[i + 1] === '&') {
+        merged += command[i + 1];
+        i++;
+      }
+      if (merged === '<<' && command[i + 1] === '-') {
+        merged = '<<-';
+        i++;
+      }
+      tokens.push({ t: merged, op: true });
       continue;
     }
     if (c === ' ' || c === '\t' || c === '\r' || c === '\f' || c === '\v') {
@@ -171,18 +209,23 @@ function splitWords(command) {
     }
     if (c === '\n') {
       flush();
-      words.push(';');
+      tokens.push({ t: '\n', op: true });
       continue;
     }
     if (c === '\\' && i + 1 < command.length) {
+      if (command[i + 1] === '\n') {
+        i++; // line continuation: drop both characters, keep accumulating
+        continue;
+      }
       word += command[i + 1];
+      wordQuoted = true;
       i++;
       continue;
     }
     word += c;
   }
   flush();
-  return words;
+  return tokens;
 }
 
 function basename(path) {
@@ -214,45 +257,97 @@ function reasonWrite(name) {
 }
 
 function denyReason(command) {
-  const words = splitWords(command);
+  const tokens = splitWords(command);
   let expectCommand = true;
   let mode = null; // 'delete' | 'move' while a destructive command's arguments are read
-  let redirect = null; // 'out' | 'in' while a redirection's target word comes next
+  let redirect = null; // 'out' | 'in' | 'heredoc' while a redirection's target word comes next
+  let heredoc = null; // { delim, literal } once a heredoc's delimiter is read
+  let skippingHeredoc = false; // a quoted-delimiter heredoc body is data, not commands
+  let atLineStart = true; // for spotting the heredoc terminator
+  let optValuePending = false; // the current prefix option's value word comes next
+  const prefixStack = []; // nested command prefixes (sudo nice), innermost last
+  const currentPrefix = () =>
+    prefixStack.length === 0 ? null : prefixStack[prefixStack.length - 1];
 
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
 
-    if (redirect !== null && !SEPARATORS.has(w)) {
-      // A redirection's parsed target word: an output redirect onto a
-      // protected file truncates or overwrites it; an input redirect reads
-      // from it, which is fine. Parsing it as a word (quotes stripped,
-      // spaces held inside quotes) is what keeps
-      // grep -F "> factory-ledger.md" innocent and the real thing denied.
-      if (redirect === 'out' && PROTECTED_NAME.test(basename(w))) {
-        return reasonProtected(basename(w), 'truncate or overwrite');
+    if (skippingHeredoc) {
+      // Literal heredoc data. Ends at a line whose only word is the
+      // delimiter (leading whitespace tolerated, covering <<-).
+      if (tok.op) {
+        if (tok.t === '\n') atLineStart = true;
+        continue;
       }
-      redirect = null;
+      if (atLineStart && tok.t === heredoc.delim) {
+        skippingHeredoc = false;
+        heredoc = null;
+        expectCommand = true;
+      }
+      atLineStart = false;
       continue;
     }
-    redirect = null;
 
-    if (SEPARATORS.has(w)) {
-      if (w === '>' || w === '>>') {
+    if (tok.op) {
+      const t = tok.t;
+      if (t === '>' || t === '>>' || t === '>|' || t === '>&') {
         redirect = 'out';
-      } else if (w === '<' || w === '<<') {
+      } else if (t === '<' || t === '<&') {
         redirect = 'in';
+      } else if (t === '<<' || t === '<<-') {
+        redirect = 'heredoc';
       } else {
+        redirect = null;
         expectCommand = true;
         mode = null;
+        optValuePending = false;
+        prefixStack.length = 0;
+        // The first newline after the delimiter begins the body. A quoted
+        // delimiter makes the body literal; an unquoted one keeps it
+        // scanned, because command substitutions in it really do execute.
+        if (t === '\n' && heredoc !== null) {
+          skippingHeredoc = heredoc.literal;
+          if (!heredoc.literal) heredoc = null;
+        }
       }
+      continue;
+    }
+
+    const w = tok.t;
+
+    if (redirect !== null) {
+      // A redirection's parsed target word: an output redirect onto a
+      // protected file truncates or overwrites it; an input redirect reads
+      // from it, which is fine. A heredoc's target is its delimiter.
+      const base = basename(w);
+      if (redirect === 'out' && PROTECTED_NAME.test(base)) {
+        return reasonProtected(base, 'truncate or overwrite');
+      }
+      if (redirect === 'heredoc') heredoc = { delim: w, literal: tok.q };
+      redirect = null;
       continue;
     }
 
     if (expectCommand) {
-      if (w.startsWith('-') || ASSIGNMENT.test(w)) continue;
+      if (optValuePending) {
+        optValuePending = false;
+        continue;
+      }
+      if (w.startsWith('-')) {
+        // A prefix's option with a separate value (nice -n 5, sudo -u root,
+        // xargs -n 1): skip its value too, or it eats the command slot.
+        if (PREFIX_OPT_VALUES[currentPrefix()]?.has(w)) optValuePending = true;
+        continue;
+      }
+      if (ASSIGNMENT.test(w)) continue;
       const base = basename(w);
-      if (SHELL_KEYWORDS.has(base) || PREFIXES.has(base)) continue;
+      if (SHELL_KEYWORDS.has(base)) continue;
+      if (PREFIXES.has(base)) {
+        prefixStack.push(base);
+        continue;
+      }
       expectCommand = false;
+      prefixStack.length = 0;
       if (DELETE_VERBS.has(base)) {
         mode = 'delete';
       } else if (MOVE_VERBS.has(base)) {
@@ -264,10 +359,10 @@ function denyReason(command) {
         // as arguments rather than stopping the collection.
         const args = [];
         while (
-          i + 1 < words.length &&
-          (!SEPARATORS.has(words[i + 1]) || words[i + 1] === '(' || words[i + 1] === ')')
+          i + 1 < tokens.length &&
+          (!tokens[i + 1].op || tokens[i + 1].t === '(' || tokens[i + 1].t === ')')
         ) {
-          args.push(words[++i]);
+          args.push(tokens[++i].t);
         }
         const found = denyReasonInFind(args);
         if (found !== null) return found;

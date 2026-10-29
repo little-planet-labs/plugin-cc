@@ -91,6 +91,20 @@ fs.writeFileSync(process.argv[2], s.permissionDecisionReason);
 ' "$OUT" "$REASON" 2>"$WORK/extract-error"
 }
 
+# bash_call_file <file-with-command> [caller agent_type, "-" to omit]:
+# like bash_call, but reads the command from a file — for multiline or
+# quote-heavy payloads.
+bash_call_file() {
+  caller=${2:-$WORKER}
+  {
+    printf '{"session_id":"abc123","transcript_path":"/nonexistent/t.jsonl","cwd":"%s","permission_mode":"default","hook_event_name":"PreToolUse",' "$WORK"
+    [ "$caller" != "-" ] && printf '"agent_type":"%s",' "$caller"
+    printf '"tool_name":"%s","tool_input":{"command":%s},"tool_use_id":"toolu_1"}' \
+      "Bash" "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync(process.argv[1],"utf8")))' "$1")"
+  } >"$IN"
+  run_hook "$IN"
+}
+
 # write_call <tool_name> <file_path> [caller agent_type, "-" to omit]:
 # writes a PreToolUse Edit/Write input to $IN and runs the hook.
 write_call() {
@@ -300,6 +314,65 @@ benign_commands_pass() {
   expect_silent "worker, git reads"
 }
 
+# Copilot round 2 on PR #4: clobber redirects, line continuations, prefix
+# option values, comments, quoted operator words, and heredoc bodies.
+token_identity_comments_heredocs() {
+  bash_call ': >| factory-ledger.md'
+  expect_deny "clobber redirect onto the ledger" "factory-ledger.md" "truncate or overwrite"
+  bash_call 'echo x >& factory-request.md'
+  expect_deny "both-streams redirect onto the request file" "factory-request.md"
+  bash_call "$(printf 'rm -f \\\nfactory-ledger.md')"
+  expect_deny "backslash-newline continuation into the ledger" "factory-ledger.md"
+  bash_call "$(printf 'rm -f x \\\n  /x/scratchpad/*')"
+  expect_deny "indented continuation into a glob" "glob"
+  bash_call 'nice -n 5 rm -f factory-ledger.md'
+  expect_deny "nice -n with a separate value" "factory-ledger.md"
+  bash_call 'sudo -u root rm -f factory-ledger.md'
+  expect_deny "sudo -u with a separate value" "factory-ledger.md"
+  bash_call 'xargs -n 1 rm -f factory-ledger.md'
+  expect_deny "xargs -n with a separate value" "factory-ledger.md"
+  bash_call 'sudo nice -n 5 rm -f factory-ledger.md'
+  expect_deny "nested prefixes with an option value" "factory-ledger.md"
+  bash_call "$(printf '# Clean up the worker%ss files\nrm -f /tmp/cache/*' "'")"
+  expect_deny "comment with an apostrophe, then a real glob delete" "glob"
+
+  cat >"$WORK/heredoc-quoted" <<'OUTER'
+cat > /tmp/cleanup.sh <<'EOF'
+rm -f /tmp/cache/*
+EOF
+echo done
+OUTER
+  bash_call_file "$WORK/heredoc-quoted"
+  expect_silent "quoted heredoc body holding a glob delete is data"
+  cat >"$WORK/heredoc-dashed" <<'OUTER'
+cat > /tmp/cleanup.sh <<-'EOF'
+rm -f /tmp/cache/*
+EOF
+OUTER
+  bash_call_file "$WORK/heredoc-dashed"
+  expect_silent "quoted <<- heredoc body is data too"
+  cat >"$WORK/heredoc-unquoted" <<'OUTER'
+cat > /tmp/x.sh <<EOF
+rm -f /tmp/cache/*
+EOF
+OUTER
+  bash_call_file "$WORK/heredoc-unquoted"
+  expect_deny "unquoted heredoc body (substitutions execute) still scanned" "glob"
+
+  # Benign neighbors of the same syntax.
+  bash_call 'grep "^[>%]" factory-ledger.md'
+  expect_silent "quoted > inside a pattern word"
+  bash_call "grep '>' factory-ledger.md"
+  expect_silent "standalone quoted > argument is data, not an operator"
+  bash_call 'echo x 2>&1'
+  expect_silent "stderr dup, no file target"
+  bash_call 'echo -n no-newline'
+  expect_silent "echo -n"
+  bash_call 'time -p ls factory-ledger.md'
+  expect_silent "-p flag without a value"
+}
+
+
 state_file_writes_are_denied() {
   write_call Edit /x/scratchpad/factory-ledger.md
   expect_deny "worker, Edit the ledger" "factory-ledger.md" "brief is wrong"
@@ -430,6 +503,7 @@ run_test glob_deletes_are_denied
 run_test state_file_deletes_are_denied
 run_test state_file_moves_and_truncations_are_denied
 run_test compound_syntax_and_quoting
+run_test token_identity_comments_heredocs
 run_test state_file_writes_are_denied
 run_test benign_commands_pass
 run_test bare_and_builtin_agent_types_are_denied
