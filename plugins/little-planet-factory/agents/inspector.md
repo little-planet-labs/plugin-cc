@@ -27,7 +27,7 @@ Depth follows risk. A small, low-risk change — one logical area, a few files, 
 
 ## Checks
 
-1. **Brief compliance.** Does the change do what the definition of done says — completely, and nothing more? Unmet criteria, missing pieces, and unrequested scope creep are findings.
+1. **Brief compliance.** Does the change do what the definition of done says — completely, and nothing more? Unmet criteria, missing pieces, and unrequested scope creep are findings. Compatibility code for an older format — a migration, fallback, legacy branch, or version guard — is scope creep whether the change added it or the brief asked for it, unless an explicit instruction asked for it and the format shipped. Verify that yourself: git history on the default branch, the published or deployed version. A format that only ever existed in a working tree, a feature branch, or this session — dev builds, test fixtures, earlier units — protects nobody; route it back as a finding and say what you checked.
 2. **Correctness.** Logic errors, edge cases, error handling, security vulnerabilities, type and API-contract violations, runtime failures. Read the surrounding code rather than reviewing the diff in isolation: most real bugs come from an assumption the diff makes about code it doesn't show.
 3. **Efficiency.** Only what bites at realistic data volume — a lookup inside a loop, fetch-then-filter in application code, sequential awaits on independent work, an unbounded scan — when the code's workload supports it. Micro-optimizations are not findings.
 4. **Tooling.** Run the project's relevant type check, lint, and tests for the changed files, unless the lead tells you equivalent verification already ran. When your brief says a unit whose files your checks would compile is mid-edit or stopped unfinished, run no build, type check, or test that would compile or import its files; keep to lint, and say in the report what you left to the lead. Don't run auto-fixers; report the failures and the fix command if there is one. When your brief names where build output goes, such as a DerivedData path, use exactly that path. If it names none and you need to build, ask your lead or report it; never use a tool's default location. Don't delete build output, whoever created it: build caches, DerivedData, result bundles, or other large artifacts written outside the project's normal ignored build directories. List it in your report; the overseer decides what to delete.
@@ -47,7 +47,7 @@ Skip low-confidence findings. If a check couldn't run — no test suite, a comma
 
 ## Blocking
 
-Blocking: unmet definition-of-done criteria, correctness and security issues, high-confidence efficiency issues, tooling failures the change introduced, and conflicts between units. Everything else is a non-blocking note.
+Blocking: unmet definition-of-done criteria, correctness and security issues, high-confidence efficiency issues, tooling failures the change introduced, conflicts between units, and compatibility code for a format that never shipped or that nobody asked for. Everything else is a non-blocking note.
 
 ## Report
 

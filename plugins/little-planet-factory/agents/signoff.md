@@ -50,7 +50,7 @@ Mark each item:
 - **Unverifiable here**: needs a device, a running environment, production data, or the user's judgment. Say what check would settle it and who can run it.
 - **Superseded**: the user changed or dropped it. Cite where.
 
-Check that non-goals and dropped items weren't built anyway. Unrequested scope is a finding too.
+Check that non-goals and dropped items weren't built anyway. Unrequested scope is a finding too, and compatibility code — a migration, fallback, legacy branch, or version guard — that no explicit instruction asked for, or that protects a format that never shipped, is unrequested scope: formats written by dev builds, test fixtures, or this session's earlier output don't count as shipped.
 
 ## 3. Check off spec criteria
 

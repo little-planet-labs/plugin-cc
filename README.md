@@ -161,7 +161,7 @@ Only `policy` is required. GitHub operations go through the `gh` CLI, one bare c
 - **Per-unit inspection** before integration.
 - **At least two review rounds.**
 
-Everything else gets the normal inspection heuristic. Every repair diff is re-reviewed. After three review rounds on a unit, repairs stop. The overseer decides what has to change before work resumes: the brief, coordination between units, the agent, or the approach. It asks you when the decision is yours. Signoff's re-runs have the same limit. Claims and verification output are checked rather than trusted: a 0-test "pass" isn't a pass. Agents don't write product prose by default. Short labels are fine if they're listed in the copy inventory. A project's `CLAUDE.md`, or asking in the session, turns this off.
+Everything else gets the normal inspection heuristic. Every repair diff is re-reviewed. After three review rounds on a unit, repairs stop. The overseer decides what has to change before work resumes: the brief, coordination between units, the agent, or the approach. It asks you when the decision is yours. Signoff's re-runs have the same limit. Claims and verification output are checked rather than trusted: a 0-test "pass" isn't a pass. Compatibility code exists only for formats that verifiably shipped: before any migration, fallback, or legacy branch, agents check git history on the default branch and the published or deployed version, and unreleased formats — dev builds, test fixtures, this session's earlier output — are changed in place, with the old shape's code, tests, and docs deleted and same-run data regenerated. Briefs never promise old behavior for something that hasn't shipped, and the inspector blocks compat code nobody asked for. A project's `CLAUDE.md` may name formats that do need compatibility. Agents don't write product prose by default. Short labels are fine if they're listed in the copy inventory. A project's `CLAUDE.md`, or asking in the session, turns this off.
 
 **Asking questions** (`asking-questions`) is preloaded into the overseer, manager, worker, and signoff. The researcher and inspector don't ask. When a decision is yours, it asks through the interview-question UI: each question has a sentence or two of self-contained context, one decision, and two to four options with their consequences, with a recommendation first. No questions are buried in prose, and none of its messages end with an inline "want me to…?". Managers and workers pass questions up in the same shape, and the overseer merges them into one interview.
 
@@ -279,7 +279,7 @@ plugins/little-planet-factory/
   skills/version-control/                  git policy resolution and safety rules, preloaded into every agent
   skills/react-apps/                       React web app conventions, loaded on demand
   skills/xcode-projects/                   Xcode and Swift conventions, loaded on demand
-  skills/quality-bar/                      foundational tiering, pre-mortems, review and copy rules, preloaded into every agent
+  skills/quality-bar/                      foundational tiering, pre-mortems, review, compatibility, and copy rules, preloaded into every agent
   skills/asking-questions/                 interview-style questions to the user, preloaded into all agents but the researcher and inspector
   skills/vercel/                           Vercel deploy rules and platform defaults, loaded on demand
   skills/nextjs/                           Next.js conventions and defaults, loaded on demand
