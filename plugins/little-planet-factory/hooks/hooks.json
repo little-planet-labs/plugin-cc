@@ -1,5 +1,5 @@
 {
-  "description": "Tells the overseer where its factory ledger lives, re-injects the ledger after compaction or resume, and in the lite tier (LPF_TIER=lite) announces the tier and denies agent spawns that aren't on sonnet. The status mod (register.ts) shows factory status in a band above the prompt, Agent rows, the spinner, toasts and /factory, and reminds the overseer to update its ledger before auto-compaction.",
+  "description": "Tells the overseer where its factory ledger lives, re-injects the ledger after compaction or resume, and in the lite tier (LPF_TIER=lite) announces the tier and denies agent spawns that aren't on sonnet. A PreToolUse guard keeps agents from deleting, moving, or truncating the factory-*.md state files (ledger, request, review records), from writing them unless they're the overseer or a manager, and from glob deletes — the shared-scratchpad wipe vector. The status mod (register.ts) shows factory status in a band above the prompt, Agent rows, the spinner, toasts and /factory, and reminds the overseer to update its ledger before auto-compaction.",
   "hooks": {
     "SessionStart": [
       {
@@ -19,6 +19,16 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/lite-tier.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-guard.sh\"",
             "timeout": 10
           }
         ]

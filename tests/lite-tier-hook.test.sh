@@ -137,7 +137,9 @@ hooks_json_registers_pre_tool_use() {
   node -e '
 const config = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const groups = config.hooks.PreToolUse;
-if (!Array.isArray(groups) || groups.length !== 1) throw new Error("expected one PreToolUse group");
+// group 0 is this hook; group 1 is the Bash ledger guard, covered by
+// ledger-guard-hook.test.sh — it must stay in this order.
+if (!Array.isArray(groups) || groups.length !== 2) throw new Error("expected two PreToolUse groups");
 if (groups[0].matcher !== "Agent|Task") throw new Error("matcher is " + groups[0].matcher);
 if (groups[0].hooks.length !== 1) throw new Error("expected one hook");
 const hook = groups[0].hooks[0];
